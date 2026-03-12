@@ -1,6 +1,32 @@
 import streamlit as st
-import re
 
+# 1. 從 Streamlit Cloud 的 Secrets 讀取預設密碼
+# 請確保您在 Streamlit 網頁後台的 Secrets 設定了 PASSWORD = "你的密碼"
+CORRECT_PASSWORD = st.secrets["PASSWORD"]
+
+def check_password():
+    """驗證密碼，若成功則回傳 True"""
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    # 如果已經驗證過，直接回傳 True
+    if st.session_state["password_correct"]:
+        return True
+
+    # 顯示密碼輸入框
+    st.title("🏥 急診臨床決策支援系統")
+    st.subheader("請輸入單位驗證碼以繼續")
+    
+    user_input = st.text_input("密碼", type="password")
+    
+    if st.button("登入"):
+        if user_input == CORRECT_PASSWORD:
+            st.session_state["password_correct"] = True
+            st.rerun() # 重新整理頁面以進入主程式
+        else:
+            st.error("❌ 密碼錯誤，請洽詢單位負責人")
+            
+    return False
 # --- 網頁標題與說明 ---
 st.title("🚨 急診留觀風險自動評估系統")
 st.markdown("快速計算 MEWS、休克指數，並整合危險檢驗值 (K, Hs-TnI, CRP, Lactate)，自動生成護理交班紀錄。")
