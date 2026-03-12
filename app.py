@@ -1,34 +1,65 @@
 import streamlit as st
+import pandas as pd
+from datetime import datetime
+import os
 import re
-# --- 網頁標題與說明 ---
+
+# --- 設定資料紀錄檔案名稱 ---
+LOG_FILE = "assessment_log.csv"
+
+# --- 側邊欄：管理員專區 ---
+st.sidebar.title("🔒 管理員專區")
+admin_password = st.sidebar.text_input("請輸入管理員密碼", type="password")
+
+if admin_password == "alex":
+    st.sidebar.success("✅ 登入成功")
+    st.sidebar.markdown("### 🗂️ 系統使用紀錄")
+    
+    # 讀取並顯示紀錄檔
+    if os.path.exists(LOG_FILE):
+        df = pd.read_csv(LOG_FILE)
+        st.sidebar.dataframe(df) # 在側邊欄顯示表格
+        
+        # 提供下載按鈕
+        csv = df.to_csv(index=False, encoding='utf-8-sig')
+        st.sidebar.download_button(
+            label="📥 下載完整紀錄 (CSV)",
+            data=csv,
+            file_name="ed_obs_log.csv",
+            mime="text/csv"
+        )
+        
+        # 提供清空紀錄按鈕
+        if st.sidebar.button("🗑️ 清空所有紀錄"):
+            os.remove(LOG_FILE)
+            st.sidebar.warning("紀錄已清空，請重新整理網頁。")
+    else:
+        st.sidebar.info("目前尚無任何評估紀錄。")
+elif admin_password != "":
+    st.sidebar.error("❌ 密碼錯誤")
+
+
+# --- 網頁主畫面 (給一般使用者) ---
 st.title("🚨 急診留觀風險自動評估系統")
-st.markdown("快速計算 MEWS、休克指數，並整合危險檢驗值 (K, Hs-TnI, CRP, Lactate)，自動生成護理交班紀錄。")
+st.markdown("快速計算 MEWS、休克指數，並整合危險檢驗值 (K, Hs-TnI, CRP, Lactate)。")
 st.divider() 
 
-# --- 第一區塊：輸入生命徵象與意識狀態 ---
 st.subheader("1. 臨床徵象與意識評估")
 vitals_input = st.text_area("📋 請貼上生命徵象 (例如：體溫：36.0 ℃；脈搏：85 次...)", height=100)
+gcs_input = st.number_input("🧠 意識狀態 (GCS 分數, 3-15) ⚠️必填", min_value=3, max_value=15, value=None, step=1)
 
-# 強制輸入 GCS，預設為空值 (None)，強迫使用者一定要填寫
-gcs_input = st.number_input("🧠 意識狀態 (GCS 分數, 3-15) ⚠️必填", min_value=3, max_value=15, value=None, step=1, placeholder="請輸入 3 到 15 的整數")
-
-# --- 第二區塊：輸入檢驗報告 (選填) ---
 st.subheader("2. 補充檢驗報告 (若無則留白)")
-# 把畫面分成左右兩半，放四個輸入框
 col1, col2 = st.columns(2)
-
 with col1:
-    k_input = st.text_input("➤ 鉀離子 (K) 數值：", placeholder="例如：2.5")
-    crp_input = st.text_input("➤ CRP (發炎指標)：", placeholder="例如：1.5")
+    k_input = st.text_input("➤ 鉀離子 (K) 數值：")
+    crp_input = st.text_input("➤ CRP (發炎指標)：")
 with col2:
-    tni_input = st.text_input("➤ Hs-TnI 數值：", placeholder="例如：18.2")
-    lactate_input = st.text_input("➤ Lactate (乳酸) 數值：", placeholder="例如：2.1")
+    tni_input = st.text_input("➤ Hs-TnI 數值：")
+    lactate_input = st.text_input("➤ Lactate (乳酸) 數值：")
 
 st.divider()
 
-# --- 按下按鈕後開始運算 ---
 if st.button("🚀 開始評估並生成紀錄", type="primary"):
-    # 防呆機制：檢查是否都有填寫
     if vitals_input.strip() == "":
         st.error("⚠️ 請先貼上生命徵象！")
     elif gcs_input is None:
@@ -37,7 +68,6 @@ if st.button("🚀 開始評估並生成紀錄", type="primary"):
         total_score = 0
         temp = hr = rr = sbp = None 
         
-        # 1. 計算 Vital Signs 分數
         temp_match = re.search(r'體溫：([\d.]+)', vitals_input)
         if temp_match:
             temp = float(temp_match.group(1))
@@ -58,22 +88,15 @@ if st.button("🚀 開始評估並生成紀錄", type="primary"):
             sbp = int(sbp_match.group(1))
             total_score += (3 if sbp <= 70 else 2 if sbp <= 80 or sbp >= 200 else 1 if sbp <= 100 else 0)
 
-        # 2. 計算 GCS 分數並加入 MEWS 總分
         gcs_score = 0
-        if gcs_input == 15:
-            gcs_score = 0
-        elif 13 <= gcs_input <= 14:
-            gcs_score = 1
-        elif 9 <= gcs_input <= 12:
-            gcs_score = 2
-        elif gcs_input <= 8:
-            gcs_score = 3
+        if gcs_input == 15: gcs_score = 0
+        elif 13 <= gcs_input <= 14: gcs_score = 1
+        elif 9 <= gcs_input <= 12: gcs_score = 2
+        elif gcs_input <= 8: gcs_score = 3
         total_score += gcs_score
 
-        # 計算休克指數
         shock_index = round(hr / sbp, 2) if (hr and sbp and sbp > 0) else "無法計算"
 
-        # 3. 處理檢驗報告邏輯
         lab_alert = False
         lab_records_list = []
         
@@ -81,64 +104,57 @@ if st.button("🚀 開始評估並生成紀錄", type="primary"):
             k_val = float(k_input)
             if k_val < 3.0 or k_val > 6.0:
                 lab_alert = True
-                lab_records_list.append(f"鉀離子 {k_val} mEq/L (Critical)")
-            else:
-                lab_records_list.append(f"鉀離子 {k_val} mEq/L")
+            lab_records_list.append(f"K {k_val}")
                 
         if tni_input.strip() != "":
             tni_val = float(tni_input)
             if tni_val > 17.5:
                 lab_alert = True
-                lab_records_list.append(f"Hs-TnI {tni_val} (異常 > 17.5)")
-            else:
-                lab_records_list.append(f"Hs-TnI {tni_val} (正常)")
+            lab_records_list.append(f"TnI {tni_val}")
 
         if crp_input.strip() != "":
-            crp_val = float(crp_input)
-            if crp_val > 1.0: # 可依院內標準調整，此處抓大於 1.0 為偏高
-                lab_records_list.append(f"CRP {crp_val} (偏高)")
-            else:
-                lab_records_list.append(f"CRP {crp_val} (正常)")
+            lab_records_list.append(f"CRP {crp_input}")
 
         if lactate_input.strip() != "":
             lac_val = float(lactate_input)
-            if lac_val >= 2.2:
-                lab_alert = True # 乳酸 >= 4.0 直接視為危急值觸發紅區
-                lab_records_list.append(f"Lactate {lac_val} (Critical >= 4.0)")
-            elif lac_val > 2.0:
-                lab_records_list.append(f"Lactate {lac_val} (異常 > 2.0)")
-            else:
-                lab_records_list.append(f"Lactate {lac_val} (正常)")
+            if lac_val >= 4.0:
+                lab_alert = True 
+            lab_records_list.append(f"Lac {lac_val}")
 
-        if len(lab_records_list) > 0:
-            lab_record_text = " / ".join(lab_records_list)
-        else:
-            lab_record_text = "無特殊異常或未驗"
-
-        # 4. 判斷風險等級
         risk_level = ""
-        disposition = ""
         if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0):
-            risk_level = "🔴 高度風險 (紅區)"
-            disposition = "on monitor 並通知醫師評估處置，建議收治ICU或轉急救區。"
+            risk_level = "🔴 紅區"
             st.error(f"判定結果：{risk_level}") 
         elif total_score >= 3:
-            risk_level = "🟡 中度風險 (黃區)"
-            disposition = "需密切觀察，增加 Vital signs 監測頻率Q2H-Q4H。"
+            risk_level = "🟡 黃區"
             st.warning(f"判定結果：{risk_level}") 
         else:
-            risk_level = "🟢 穩定狀態 (綠區)"
-            disposition = "生命徵象穩定，持續常規留觀。"
+            risk_level = "🟢 綠區"
             st.success(f"判定結果：{risk_level}") 
 
-        # --- 產生護理紀錄 ---
-        st.subheader("📋 護理交班紀錄 (請直接複製)")
-        nursing_note = f"""[留觀風險自動評估紀錄]
-1. 當下生理數值：體溫 {temp}℃, 脈搏 {hr}次/分, 呼吸 {rr}次/分, 血壓 {sbp}mmHg
-2. 預警指標運算：MEWS 總分 {total_score} 分 (含 GCS {gcs_input} 分) / 休克指數 (SI) {shock_index}
-3. 關鍵檢驗數值：{lab_record_text}
-4. 系統判定風險：{risk_level}
-5. 建議動向處置：{disposition}"""
-        
+        # --- 產生護理紀錄 (給使用者複製) ---
+        st.subheader("📋 護理交班紀錄")
+        nursing_note = f"[留觀風險自動評估紀錄]\nMEWS: {total_score}分 (GCS {gcs_input}), SI: {shock_index}\n風險: {risk_level}"
         st.code(nursing_note, language="text")
-st.caption("© 2026 [護理師 吳智弘] 開發設計. 版權所有。")
+
+        # ==========================================
+        # 隱藏的後台動作：將這筆資料寫入 CSV 檔案
+        # ==========================================
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 準備要存進表格的一筆資料
+        new_record = {
+            "評估時間": current_time,
+            "MEWS分數": total_score,
+            "GCS": gcs_input,
+            "休克指數": shock_index,
+            "檢驗項目": " / ".join(lab_records_list) if lab_records_list else "無",
+            "系統判定": risk_level
+        }
+        
+        # 轉換成表格格式並儲存
+        df_new = pd.DataFrame([new_record])
+        if not os.path.exists(LOG_FILE):
+            df_new.to_csv(LOG_FILE, index=False, encoding='utf-8-sig') # 第一次建立檔案
+        else:
+            df_new.to_csv(LOG_FILE, mode='a', header=False, index=False, encoding='utf-8-sig') # 之後附加在原本檔案後面
