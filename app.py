@@ -142,4 +142,4 @@ if st.button("🚀 開始評估並生成紀錄", type="primary"):
 5. 建議動向處置：{disposition}"""
         
         st.code(nursing_note, language="text")
-        st.caption("© 2026 [護理師 吳智弘] 開發設計. 版權所有。")
+st.caption("© 2026 [護理師 吳智弘] 開發設計. 版權所有。")
