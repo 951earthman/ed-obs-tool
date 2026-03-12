@@ -158,4 +158,4 @@ if st.button("🚀 開始評估並生成紀錄", type="primary"):
             df_new.to_csv(LOG_FILE, index=False, encoding='utf-8-sig') # 第一次建立檔案
         else:
             df_new.to_csv(LOG_FILE, mode='a', header=False, index=False, encoding='utf-8-sig') # 之後附加在原本檔案後面
-        st.caption("© 2026 [護理師 吳智弘] 開發設計. 版權所有。")
+st.caption("© 2026 [護理師 吳智弘] 開發設計. 版權所有。")
