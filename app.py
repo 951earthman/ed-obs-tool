@@ -121,15 +121,15 @@ if st.button("🚀 開始評估並生成紀錄", type="primary"):
         disposition = ""
         if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0):
             risk_level = "🔴 高度風險 (紅區)"
-            disposition = "立即通知醫師評估處置，建議收治或轉急救區。"
+            disposition = "on monitor 並通知醫師評估處置，建議收治ICU或轉急救區。"
             st.error(f"判定結果：{risk_level}") 
         elif total_score >= 3:
             risk_level = "🟡 中度風險 (黃區)"
-            disposition = "需密切觀察，增加 Vital signs 監測頻率。"
+            disposition = "需密切觀察，增加 Vital signs 監測頻率Q2H-Q4H。"
             st.warning(f"判定結果：{risk_level}") 
         else:
             risk_level = "🟢 穩定狀態 (綠區)"
-            disposition = "生命徵象穩定，持續常規留觀或提醒醫師評估 MBD。"
+            disposition = "生命徵象穩定，持續常規留觀。"
             st.success(f"判定結果：{risk_level}") 
 
         # --- 產生護理紀錄 ---
