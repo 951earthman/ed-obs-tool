@@ -103,7 +103,7 @@ if st.button("🚀 開始評估並生成紀錄", type="primary"):
 
         if lactate_input.strip() != "":
             lac_val = float(lactate_input)
-            if lac_val >= 4.0:
+            if lac_val >= 2.2:
                 lab_alert = True # 乳酸 >= 4.0 直接視為危急值觸發紅區
                 lab_records_list.append(f"Lactate {lac_val} (Critical >= 4.0)")
             elif lac_val > 2.0:
