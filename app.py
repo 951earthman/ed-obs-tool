@@ -79,7 +79,85 @@ with col1:
 with col2:
     tni_input = st.text_input("➤ Hs-TnI 數值：")
     lactate_input = st.text_input("➤ Lactate (乳酸) 數值：")
+import streamlit as st
+import pandas as pd
+import re
 
+# --- 隱藏在背後的解析神經中樞 ---
+def parse_his_vitals(raw_text):
+    parsed_data = []
+    # 將貼上的文字一行一行切開
+    for line in raw_text.strip().split('\n'):
+        tokens = line.split() # 將每一行用空白或 Tab 切成一個個單字
+        if not tokens: continue
+        
+        # 尋找血壓的位置 (特徵：字串裡面有 '/' 且前後是數字)
+        bp_idx = -1
+        for i, t in enumerate(tokens):
+            if '/' in t and len(t.split('/')) == 2 and t.split('/')[0].isdigit():
+                bp_idx = i
+                break
+                
+        # 如果有找到血壓，就開始往前抓數值
+        if bp_idx >= 2:
+            try:
+                sbp = int(tokens[bp_idx].split('/')[0]) # 收縮壓 (斜線前面的數字)
+                hr = int(tokens[bp_idx-2])              # 心跳 (血壓往前數兩個欄位)
+                
+                # 抓取日期與時間
+                date_str = tokens[0] 
+                time_str = tokens[1] 
+                
+                # 自動把民國年轉換為西元年 (例如 115 轉為 2026)，並組合成標準時間格式
+                if len(date_str) == 7 and date_str.startswith('1'):
+                    greg_year = int(date_str[:3]) + 1911
+                    dt_str = f"{date_str[3:5]}/{date_str[5:7]} {time_str[:2]}:{time_str[2:]}"
+                else:
+                    dt_str = f"{date_str} {time_str}" 
+                    
+                parsed_data.append({
+                    "時間": dt_str,
+                    "心跳 (HR)": hr,
+                    "收縮壓 (SBP)": sbp,
+                    "休克指數 (SI)": round(hr / sbp, 2)
+                })
+            except Exception as e:
+                pass # 如果遇到亂碼或無法解析的行，就安靜地跳過，程式不會崩潰
+                
+    return pd.DataFrame(parsed_data)
+
+
+# --- 網頁畫面：批次趨勢圖區塊 ---
+st.subheader("📈 留觀生命徵象趨勢圖 (批次匯入)")
+batch_vitals = st.text_area("📋 請貼上 HIS 系統的多筆生命徵象表格 (直接複製貼上即可)：", height=150, placeholder="1150315 1400 96 20 171/91 92 simple Mask 6L...")
+
+if st.button("📊 繪製趨勢圖", type="secondary"):
+    if batch_vitals.strip() != "":
+        # 呼叫上面的神經中樞來處理資料
+        df = parse_his_vitals(batch_vitals)
+        
+        if not df.empty:
+            st.success(f"✅ 成功解析 {len(df)} 筆生命徵象紀錄！")
+            
+            # 使用 Tabs 把圖表跟原始數據分開，畫面更簡潔
+            tab1, tab2, tab3 = st.tabs(["📉 休克指數趨勢", "💓 心跳與血壓趨勢", "🗂️ 解析後數據表"])
+            
+            with tab1:
+                st.markdown("#### ⚠️ 休克指數 (SI) 趨勢")
+                st.caption("提示：當數值接近或大於 1.0 時，可能有潛在血流動力學不穩定風險。")
+                # 畫出紅色的折線圖
+                st.line_chart(df.set_index("時間")[["休克指數 (SI)"]], color="#FF4B4B")
+                
+            with tab2:
+                st.markdown("#### 💓 心跳 vs. 收縮壓")
+                # 同時畫出兩條線，方便看出交叉點
+                st.line_chart(df.set_index("時間")[["心跳 (HR)", "收縮壓 (SBP)"]])
+                
+            with tab3:
+                st.markdown("#### 整理後的乾淨表格")
+                st.dataframe(df, use_container_width=True)
+        else:
+            st.error("❌ 無法解析資料，請確認貼上的格式是否包含日期、時間、心跳與血壓。")
 st.divider()
 # --- 學理依據與評分標準 (折疊面板) ---
 with st.expander("📚 點此查看系統評分標準與學理依據 (Evidence-Based Practice)"):
