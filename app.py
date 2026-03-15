@@ -93,7 +93,7 @@ page = st.sidebar.radio("請選擇功能模組：", [
     "🔒 管理員後台"
 ])
 st.sidebar.divider()
-st.sidebar.caption("急診留觀輔助系統 v4.0")
+st.sidebar.caption("臨床決策輔助系統 v4.0")
 
 # ==========================================
 # 模組 1：單次評估與交班 (成人 MEWS / 兒科 PEWS + IV Pump)
