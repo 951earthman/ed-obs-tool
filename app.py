@@ -3,6 +3,29 @@ import pandas as pd
 from datetime import datetime
 import os
 import re
+st.subheader("1. 臨床徵象與病患類別")
+
+# 新增一個並排的切換按鈕
+patient_type = st.radio("👥 請選擇病患評估類別：", ["🧑 成人 (MEWS)", "👶 兒科 (PEWS)"], horizontal=True)
+
+if patient_type == "🧑 成人 (MEWS)":
+    st.info("目前使用：成人 MEWS 評分標準")
+    vitals_input = st.text_area("📋 請貼上生命徵象...")
+    gcs_input = st.number_input("🧠 意識狀態 (GCS)...")
+    # (執行原本成人的判斷邏輯)
+
+elif patient_type == "👶 兒科 (PEWS)":
+    st.info("目前使用：兒科 PEWS 評分標準")
+    
+    # 兒科需要先選年齡，因為 Vital signs 標準不同
+    age_group = st.selectbox("請選擇病童年齡：", ["嬰兒 (< 1歲)", "幼兒 (1-3歲)", "學齡前 (4-11歲)", "青少年 (≥ 12歲)"])
+    
+    # 兒科特有的評估項目
+    behavior = st.radio("行為狀態 (Behavior)：", ["正常玩耍/清醒 (0分)", "焦躁/安撫無效/嗜睡 (1分)", "對痛無反應 (2分)"])
+    crt = st.radio("微血管充填時間 (CRT)：", ["< 2秒 (0分)", "2-3秒 (1分)", "> 3秒 (2分)"])
+    
+    vitals_input = st.text_area("📋 請貼上生命徵象 (將依據所選年齡判斷)...")
+    # (執行兒科的判斷邏輯)
 
 # --- 設定資料紀錄檔案名稱 ---
 LOG_FILE = "assessment_log.csv"
