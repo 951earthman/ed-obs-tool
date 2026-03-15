@@ -19,11 +19,9 @@ def parse_his_vitals(raw_text):
         line = line.strip('\r')
         if not line.strip(): continue
         
-        # 判斷是否為複製貼上的 Tab 格式 (HIS 系統最常見)
         has_tabs = '\t' in line
         tokens = line.split('\t') if has_tabs else line.split()
         
-        # 尋找血壓欄位 (特徵：包含 '/' 且前面是數字)
         bp_idx = -1
         for i, t in enumerate(tokens):
             t_clean = t.strip()
@@ -36,13 +34,11 @@ def parse_his_vitals(raw_text):
                 sbp = int(tokens[bp_idx].strip().split('/')[0])
                 hr = None
                 
-                # 【策略 A】精準 Tab 定位法
                 if has_tabs and (bp_idx - 2) >= 0:
                     hr_str = tokens[bp_idx - 2].strip()
                     if hr_str.isdigit():
                         hr = int(hr_str)
                         
-                # 【策略 B】智慧防呆抓取法 (沒 Tab 或資料壓縮時)
                 if hr is None:
                     clean_tokens = line.split()
                     clean_bp_idx = -1
@@ -63,7 +59,6 @@ def parse_his_vitals(raw_text):
                             else: hr = ints[-2]
                 
                 if hr is not None:
-                    # 日期與時間處理
                     date_str = tokens[0].strip() if has_tabs else clean_tokens[0]
                     time_str = tokens[1].strip() if has_tabs else clean_tokens[1]
                     
@@ -84,7 +79,7 @@ def parse_his_vitals(raw_text):
                         "休克指數 (SI)": round(hr / sbp, 2)
                     })
             except Exception as e:
-                pass # 遇到無法解析的亂碼列安靜跳過
+                pass 
                 
     return pd.DataFrame(parsed_data)
 
@@ -98,10 +93,10 @@ page = st.sidebar.radio("請選擇功能模組：", [
     "🔒 管理員後台"
 ])
 st.sidebar.divider()
-st.sidebar.caption("臨床實證醫學輔助系統 v3.0")
+st.sidebar.caption("臨床實證醫學輔助系統 v4.0")
 
 # ==========================================
-# 模組 1：單次評估與交班 (成人 MEWS / 兒科 PEWS)
+# 模組 1：單次評估與交班 (成人 MEWS / 兒科 PEWS + IV Pump)
 # ==========================================
 if page == "📝 單次評估 (交班專用)":
     st.title("🚨 急診留觀風險自動評估與交班")
@@ -116,19 +111,24 @@ if page == "📝 單次評估 (交班專用)":
         * **公式**：心率 (HR) / 收縮壓 (SBP)。
         * **≥ 1.0**：危險值，死亡率與需急救介入機率大幅提升，列為高度風險 (紅區)。
         
-        ### 3. 危險檢驗數值 (Critical Labs)
+        ### 3. 高危險連續輸液 (IV Pump) 與假性穩定
+        * **學理依據**：依據 Sepsis-3 指引與 SOFA Score，依賴升壓劑維持血壓即代表重度心血管衰竭。
+        * **升壓劑 (Vasopressors)**：如 Levophed, Dopamine。系統將無視當下血壓，直接判定為高度風險 (紅區)。
+        * **降壓/血管擴張劑 (Vasodilators)**：如 Isoket, Perdipine。隨時有反彈或過度降壓風險，列為中度風險 (黃區)。
+
+        ### 4. 危險檢驗數值 (Critical Labs)
         * **Lactate ≥ 4.0**：組織嚴重缺氧，敗血性休克黃金指標 (紅區)。
         * **Hs-TnI > 17.5**：高敏感度心肌酵素異常。
         * **K (鉀離子) < 3.0 或 > 6.0**：致命性心律不整高風險。
         
-        ### 4. 兒科 PEWS (Pediatric Early Warning Score)
+        ### 5. 兒科 PEWS (Pediatric Early Warning Score)
         * 整合行為、心血管 (膚色/CRT) 與呼吸費力程度，提供非特異性之惡化早期預警。
         """)
     st.divider()
 
     patient_type = st.radio("👥 請選擇病患評估類別：", ["🧑 成人 (MEWS標準)", "👶 兒科 (PEWS標準)"], horizontal=True)
     
-    vitals_input = st.text_area("📋 請貼上單次生命徵象 (例如：體溫：36.0 ℃；脈搏：85 次...)：", height=100)
+    vitals_input = st.text_area("📋 1. 請貼上單次生命徵象 (例如：體溫：36.0 ℃；脈搏：85 次...)：", height=100)
     
     total_score = 0
     risk_level = ""
@@ -143,14 +143,20 @@ if page == "📝 單次評估 (交班專用)":
         age_group = st.selectbox("👶 選擇病童年齡區間：", ["0-3個月", "4-11個月", "1-4歲", "5-11歲", "12歲以上"])
         col_p1, col_p2, col_p3 = st.columns(3)
         with col_p1:
-            pews_behavior = st.radio("1. 行為狀態 (Behavior)", ["正常玩耍/清醒 (0分)", "焦躁/安撫無效/嗜睡 (1分)", "對痛無反應/無反應 (2分)"])
+            pews_behavior = st.radio("行為狀態 (Behavior)", ["正常玩耍/清醒 (0分)", "焦躁/安撫無效/嗜睡 (1分)", "對痛無反應/無反應 (2分)"])
         with col_p2:
-            pews_cv = st.radio("2. 心血管/膚色 (CV)", ["粉紅/微血管充填 < 2秒 (0分)", "蒼白/微血管充填 2-3秒 (1分)", "發紺/大理石斑/充填 > 3秒 (2分)"])
+            pews_cv = st.radio("心血管/膚色 (CV)", ["粉紅/微血管充填 < 2秒 (0分)", "蒼白/微血管充填 2-3秒 (1分)", "發紺/大理石斑/充填 > 3秒 (2分)"])
         with col_p3:
-            pews_resp = st.radio("3. 呼吸狀態 (Respiratory)", ["正常且無費力 (0分)", "呼吸急促/使用呼吸輔助肌/需給氧 (1分)", "胸凹/呻吟/SPO2<90% (2分)"])
+            pews_resp = st.radio("呼吸狀態 (Respiratory)", ["正常且無費力 (0分)", "呼吸急促/使用呼吸輔助肌/需給氧 (1分)", "胸凹/呻吟/SPO2<90% (2分)"])
         log_score_name = "PEWS"
 
-    st.subheader("🧪 補充檢驗報告 (若無則留白)")
+    st.subheader("💉 2. 高危險連續輸液 (IV Pump)")
+    iv_pumps = st.multiselect(
+        "➤ 請問病患目前是否使用以下滴注藥物？ (可複選，若無則留白)",
+        ["Levophed (Norepinephrine)", "easydopamine (Dopamine)", "Isoket (Isosorbide dinitrate)", "Perdipine (Nicardipine)", "其他降壓或強心滴注"]
+    )
+
+    st.subheader("🧪 3. 補充檢驗報告 (若無則留白)")
     col1, col2 = st.columns(2)
     with col1:
         k_input = st.text_input("➤ 鉀離子 (K)：")
@@ -158,33 +164,6 @@ if page == "📝 單次評估 (交班專用)":
     with col2:
         tni_input = st.text_input("➤ Hs-TnI：")
         lactate_input = st.text_input("➤ Lactate (乳酸)：")
-        st.subheader("💉 高危險連續輸液 (IV Pump)")
-# 使用 st.multiselect 讓護理師可以複選多種藥物
-iv_pumps = st.multiselect(
-    "➤ 請問病患目前是否使用以下滴注藥物？ (可複選，若無則留白)",
-    ["Levophed (Norepinephrine)", "easydopamine (Dopamine)", "Isoket (Isosorbide dinitrate)", "Perdipine (Nicardipine)", "其他降壓/強心滴注"]
-)
-
-# --- 在後方的風險判定邏輯中，加入 Pump 的影響 ---
-# 判斷是否使用 A 類 (升壓) 或 B 類 (降壓)
-has_vasopressor = any("Levophed" in pump or "easydopamine" in pump for pump in iv_pumps)
-has_vasodilator = any("Isoket" in pump or "Perdipine" in pump for pump in iv_pumps)
-
-# (原本的 total_score 和 lab_alert 計算維持不變)
-
-# 風險分層邏輯更新：
-if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0) or has_vasopressor:
-    risk_level = "🔴 紅區 (高度風險)"
-    disposition = "病患具高度惡化或休克風險 (依賴升壓劑/危險數值)，強烈建議收治 ICU 或留在急救區。"
-    st.error(f"系統判定：{risk_level}")
-elif total_score >= 3 or has_vasodilator:
-    risk_level = "🟡 黃區 (中度風險)"
-    disposition = "需密切觀察，因使用高危險輸液，建議縮短 Vital signs 監測頻率 (如 Q15m - Q1H)。"
-    st.warning(f"系統判定：{risk_level}")
-else:
-    risk_level = "🟢 綠區 (穩定狀態)"
-    disposition = "生命徵象穩定，持續常規留觀或提醒醫師評估 MBD。"
-    st.success(f"系統判定：{risk_level}")
 
     if st.button("🚀 開始評估並生成紀錄", type="primary"):
         if vitals_input.strip() == "":
@@ -223,6 +202,7 @@ else:
 
             shock_index = round(hr / sbp, 2) if (hr and sbp and sbp > 0) else "無法計算"
 
+            # 檢驗數值判定
             lab_alert = False
             lab_records_list = []
             if k_input.strip() != "":
@@ -240,13 +220,19 @@ else:
                 lab_records_list.append(f"Lac {lac_val}")
             lab_record_text = " / ".join(lab_records_list) if lab_records_list else "無異常或未驗"
 
-            if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0):
+            # IV Pump 判定
+            has_vasopressor = any("Levophed" in pump or "easydopamine" in pump or "強心" in pump for pump in iv_pumps)
+            has_vasodilator = any("Isoket" in pump or "Perdipine" in pump or "降壓" in pump for pump in iv_pumps)
+            pump_record_text = " / ".join(iv_pumps) if iv_pumps else "無使用"
+
+            # 終極風險分層
+            if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0) or has_vasopressor:
                 risk_level = "🔴 紅區 (高度風險)"
-                disposition = "立即通知醫師評估處置，強烈建議收治或轉急救區。"
+                disposition = "病患具高度惡化或休克風險 (危險數值或依賴升壓劑)，強烈建議收治或轉急救區。"
                 st.error(f"系統判定：{risk_level}")
-            elif total_score >= 3:
+            elif total_score >= 3 or has_vasodilator:
                 risk_level = "🟡 黃區 (中度風險)"
-                disposition = "需密切觀察，增加 Vital signs 監測頻率。"
+                disposition = "需密切觀察，因病況或使用高危險輸液，建議縮短 Vital signs 監測頻率。"
                 st.warning(f"系統判定：{risk_level}")
             else:
                 risk_level = "🟢 綠區 (穩定狀態)"
@@ -258,17 +244,20 @@ else:
 1. 評估對象：{patient_type}
 2. 當下生理數值：體溫 {temp}℃, 脈搏 {hr}次/分, 呼吸 {rr}次/分, 血壓 {sbp}mmHg
 3. 預警指標運算：{score_display} / 休克指數 (SI) {shock_index}
-4. 關鍵檢驗數值：{lab_record_text}
-5. 系統判定風險：{risk_level}
-6. 建議動向處置：{disposition}"""
+4. 高危險連續輸液：{pump_record_text}
+5. 關鍵檢驗數值：{lab_record_text}
+6. 系統判定風險：{risk_level}
+7. 建議動向處置：{disposition}"""
             st.code(nursing_note, language="text")
 
+            # 寫入後台紀錄
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             new_record = {
                 "評估時間": current_time,
                 "類別": log_score_name,
                 "分數": total_score,
                 "休克指數": shock_index,
+                "IV Pump": pump_record_text,
                 "檢驗項目": lab_record_text,
                 "系統判定": risk_level
             }
@@ -290,7 +279,6 @@ elif page == "📈 趨勢分析 (查房專用)":
 
     if st.button("📊 解析與繪製趨勢", type="primary"):
         if batch_vitals.strip() != "":
-            # 呼叫我們頂部的神經中樞函數
             df = parse_his_vitals(batch_vitals)
             
             if not df.empty:
