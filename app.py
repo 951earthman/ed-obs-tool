@@ -1,299 +1,311 @@
 import streamlit as st
 import pandas as pd
+import re
 from datetime import datetime
 import os
-import re
-st.subheader("1. 臨床徵象與病患類別")
 
-# 新增一個並排的切換按鈕
-patient_type = st.radio("👥 請選擇病患評估類別：", ["🧑 成人 (MEWS)", "👶 兒科 (PEWS)"], horizontal=True)
-
-if patient_type == "🧑 成人 (MEWS)":
-    st.info("目前使用：成人 MEWS 評分標準")
-    vitals_input = st.text_area("📋 請貼上生命徵象...")
-    gcs_input = st.number_input("🧠 意識狀態 (GCS)...")
-    # (執行原本成人的判斷邏輯)
-
-elif patient_type == "👶 兒科 (PEWS)":
-    st.info("目前使用：兒科 PEWS 評分標準")
-    
-    # 兒科需要先選年齡，因為 Vital signs 標準不同
-    age_group = st.selectbox("請選擇病童年齡：", ["嬰兒 (< 1歲)", "幼兒 (1-3歲)", "學齡前 (4-11歲)", "青少年 (≥ 12歲)"])
-    
-    # 兒科特有的評估項目
-    behavior = st.radio("行為狀態 (Behavior)：", ["正常玩耍/清醒 (0分)", "焦躁/安撫無效/嗜睡 (1分)", "對痛無反應 (2分)"])
-    crt = st.radio("微血管充填時間 (CRT)：", ["< 2秒 (0分)", "2-3秒 (1分)", "> 3秒 (2分)"])
-    
-    vitals_input = st.text_area("📋 請貼上生命徵象 (將依據所選年齡判斷)...")
-    # (執行兒科的判斷邏輯)
-
-# --- 設定資料紀錄檔案名稱 ---
+# ==========================================
+# 系統設定與全域變數
+# ==========================================
+st.set_page_config(page_title="急診留觀風險評估系統", page_icon="🚨", layout="wide")
 LOG_FILE = "assessment_log.csv"
 
-# --- 側邊欄：管理員專區 ---
-st.sidebar.title("🔒 管理員專區")
-admin_password = st.sidebar.text_input("請輸入管理員密碼", type="password")
+# ==========================================
+# 側邊欄導覽 (Sidebar Navigation)
+# ==========================================
+st.sidebar.title("🏥 系統導覽")
+page = st.sidebar.radio("請選擇功能模組：", [
+    "📝 單次評估 (交班專用)", 
+    "📈 趨勢分析 (查房專用)", 
+    "🔒 管理員後台"
+])
+st.sidebar.divider()
+st.sidebar.caption("臨床實證醫學輔助系統 v2.0")
 
-if admin_password == "alex":
-    st.sidebar.success("✅ 登入成功")
-    st.sidebar.markdown("### 🗂️ 系統使用紀錄")
+# ==========================================
+# 模組 1：單次評估與交班 (成人 MEWS / 兒科 PEWS)
+# ==========================================
+if page == "📝 單次評估 (交班專用)":
+    st.title("🚨 急診留觀風險自動評估與交班")
     
-    # 讀取並顯示紀錄檔
-    if os.path.exists(LOG_FILE):
-        df = pd.read_csv(LOG_FILE)
-        st.sidebar.dataframe(df) # 在側邊欄顯示表格
+    # 學理依據折疊面板
+    with st.expander("📚 點此查看系統評分標準與學理依據 (EBP)"):
+        st.markdown("""
+        ### 1. 成人 MEWS (Modified Early Warning Score)
+        * 用於早期發現潛在病情惡化，評估項目含體溫、脈搏、呼吸、收縮壓、意識狀態 (GCS)。
+        * **≥ 5 分**：高度惡化風險，需立即醫療介入 (紅區)。
         
-        # 提供下載按鈕
-        csv = df.to_csv(index=False, encoding='utf-8-sig')
-        st.sidebar.download_button(
-            label="📥 下載完整紀錄 (CSV)",
-            data=csv,
-            file_name="ed_obs_log.csv",
-            mime="text/csv"
-        )
+        ### 2. 休克指數 (Shock Index, SI)
+        * **公式**：心率 (HR) / 收縮壓 (SBP)。
+        * **≥ 1.0**：危險值，死亡率與需急救介入機率大幅提升，列為高度風險 (紅區)。
         
-        # 提供清空紀錄按鈕
-        if st.sidebar.button("🗑️ 清空所有紀錄"):
-            os.remove(LOG_FILE)
-            st.sidebar.warning("紀錄已清空，請重新整理網頁。")
+        ### 3. 危險檢驗數值 (Critical Labs)
+        * **Lactate ≥ 4.0**：組織嚴重缺氧，敗血性休克黃金指標 (紅區)。
+        * **Hs-TnI > 17.5**：高敏感度心肌酵素異常。
+        * **K (鉀離子) < 3.0 或 > 6.0**：致命性心律不整高風險。
+        
+        ### 4. 兒科 PEWS (Pediatric Early Warning Score)
+        * 整合行為、心血管 (膚色/CRT) 與呼吸費力程度，提供非特異性之惡化早期預警。
+        """)
+    st.divider()
+
+    # --- 選擇病患類別 ---
+    patient_type = st.radio("👥 請選擇病患評估類別：", ["🧑 成人 (MEWS標準)", "👶 兒科 (PEWS標準)"], horizontal=True)
+    
+    # 共用的生命徵象輸入區
+    vitals_input = st.text_area("📋 請貼上生命徵象 (例如：體溫：36.0 ℃；脈搏：85 次...)", height=100)
+    
+    total_score = 0
+    risk_level = ""
+    disposition = ""
+    log_score_name = ""
+    
+    # --- 成人評估邏輯 ---
+    if patient_type == "🧑 成人 (MEWS標準)":
+        gcs_input = st.number_input("🧠 意識狀態 (GCS 分數, 3-15) ⚠️必填", min_value=3, max_value=15, value=None, step=1)
+        log_score_name = "MEWS"
+    
+    # --- 兒科評估邏輯 ---
     else:
-        st.sidebar.info("目前尚無任何評估紀錄。")
-elif admin_password != "":
-    st.sidebar.error("❌ 密碼錯誤")
-
-
-# --- 網頁主畫面 (給一般使用者) ---
-st.title("🚨 急診留觀風險自動評估系統")
-st.markdown("快速計算 MEWS、休克指數，並整合危險檢驗值 (K, Hs-TnI, CRP, Lactate)。")
-st.divider() 
-
-st.subheader("1. 臨床徵象與意識評估")
-vitals_input = st.text_area("📋 請貼上生命徵象 (例如：體溫：36.0 ℃；脈搏：85 次...)", height=100)
-gcs_input = st.number_input("🧠 意識狀態 (GCS 分數, 3-15) ⚠️必填", min_value=3, max_value=15, value=None, step=1)
-
-st.subheader("2. 補充檢驗報告 (若無則留白)")
-col1, col2 = st.columns(2)
-with col1:
-    k_input = st.text_input("➤ 鉀離子 (K) 數值：")
-    crp_input = st.text_input("➤ CRP (發炎指標)：")
-with col2:
-    tni_input = st.text_input("➤ Hs-TnI 數值：")
-    lactate_input = st.text_input("➤ Lactate (乳酸) 數值：")
-import streamlit as st
-import pandas as pd
-import re
-
-# --- 隱藏在背後的解析神經中樞 ---
-def parse_his_vitals(raw_text):
-    parsed_data = []
-    # 將貼上的文字一行一行切開
-    for line in raw_text.strip().split('\n'):
-        tokens = line.split() # 將每一行用空白或 Tab 切成一個個單字
-        if not tokens: continue
+        st.info("💡 兒科病患正常心率/呼吸隨年齡差異極大，系統將優先依據下方『臨床表徵』進行 PEWS 風險計分。")
+        age_group = st.selectbox("👶 選擇病童年齡區間：", ["0-3個月", "4-11個月", "1-4歲", "5-11歲", "12歲以上"])
         
-        # 尋找血壓的位置 (特徵：字串裡面有 '/' 且前後是數字)
-        bp_idx = -1
-        for i, t in enumerate(tokens):
-            if '/' in t and len(t.split('/')) == 2 and t.split('/')[0].isdigit():
-                bp_idx = i
-                break
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+            pews_behavior = st.radio("1. 行為狀態 (Behavior)", ["正常玩耍/清醒 (0分)", "焦躁/安撫無效/嗜睡 (1分)", "對痛無反應/無反應 (2分)"])
+        with col_p2:
+            pews_cv = st.radio("2. 心血管/膚色 (CV)", ["粉紅/微血管充填 < 2秒 (0分)", "蒼白/微血管充填 2-3秒 (1分)", "發紺/大理石斑/充填 > 3秒 (2分)"])
+        with col_p3:
+            pews_resp = st.radio("3. 呼吸狀態 (Respiratory)", ["正常且無費力 (0分)", "呼吸急促/使用呼吸輔助肌/需給氧 (1分)", "胸凹/呻吟/SPO2<90% (2分)"])
+        
+        log_score_name = "PEWS"
+
+    st.subheader("🧪 補充檢驗報告 (若無則留白)")
+    col1, col2 = st.columns(2)
+    with col1:
+        k_input = st.text_input("➤ 鉀離子 (K)：")
+        crp_input = st.text_input("➤ CRP：")
+    with col2:
+        tni_input = st.text_input("➤ Hs-TnI：")
+        lactate_input = st.text_input("➤ Lactate (乳酸)：")
+
+    # --- 執行計算與產出 ---
+    if st.button("🚀 開始評估並生成紀錄", type="primary"):
+        if vitals_input.strip() == "":
+            st.error("⚠️ 請先貼上生命徵象！")
+        elif patient_type == "🧑 成人 (MEWS標準)" and gcs_input is None:
+            st.error("⚠️ 選擇成人評估時，請輸入 GCS 意識分數！")
+        else:
+            temp = hr = rr = sbp = None 
+            
+            # 1. 解析 Vitals (純抓取數值，供紀錄及 SI 使用)
+            temp_match = re.search(r'體溫：([\d.]+)', vitals_input)
+            if temp_match: temp = float(temp_match.group(1))
+            hr_match = re.search(r'脈搏：(\d+)', vitals_input)
+            if hr_match: hr = int(hr_match.group(1))
+            rr_match = re.search(r'呼吸：(\d+)', vitals_input)
+            if rr_match: rr = int(rr_match.group(1))
+            sbp_match = re.search(r'血壓：(\d+)/', vitals_input)
+            if sbp_match: sbp = int(sbp_match.group(1))
+
+            # 2. 計算分數 (依據成人或兒科)
+            if patient_type == "🧑 成人 (MEWS標準)":
+                if temp: total_score += (2 if temp < 35 or temp >= 38.5 else 1 if temp < 36 else 0)
+                if hr: total_score += (3 if hr <= 40 or hr >= 130 else 2 if 111 <= hr <= 129 else 1 if 41 <= hr <= 50 or 101 <= hr <= 110 else 0)
+                if rr: total_score += (3 if rr >= 30 else 2 if rr <= 8 or 21 <= rr <= 29 else 1 if 15 <= rr <= 20 else 0)
+                if sbp: total_score += (3 if sbp <= 70 else 2 if sbp <= 80 or sbp >= 200 else 1 if sbp <= 100 else 0)
                 
-        # 如果有找到血壓，就開始往前抓數值
-        if bp_idx >= 2:
-            try:
-                sbp = int(tokens[bp_idx].split('/')[0]) # 收縮壓 (斜線前面的數字)
-                hr = int(tokens[bp_idx-2])              # 心跳 (血壓往前數兩個欄位)
+                gcs_score = 0
+                if gcs_input == 15: gcs_score = 0
+                elif 13 <= gcs_input <= 14: gcs_score = 1
+                elif 9 <= gcs_input <= 12: gcs_score = 2
+                elif gcs_input <= 8: gcs_score = 3
+                total_score += gcs_score
+                score_display = f"MEWS 總分 {total_score} 分 (GCS {gcs_input})"
                 
-                # 抓取日期與時間
-                date_str = tokens[0] 
-                time_str = tokens[1] 
+            else: # 兒科 PEWS 計算
+                b_score = int(re.search(r'\((\d)分\)', pews_behavior).group(1))
+                c_score = int(re.search(r'\((\d)分\)', pews_cv).group(1))
+                r_score = int(re.search(r'\((\d)分\)', pews_resp).group(1))
+                total_score = b_score + c_score + r_score
+                score_display = f"PEWS 總分 {total_score} 分 (年齡: {age_group})"
+
+            # 3. 休克指數
+            shock_index = round(hr / sbp, 2) if (hr and sbp and sbp > 0) else "無法計算"
+
+            # 4. 檢驗報告判斷
+            lab_alert = False
+            lab_records_list = []
+            if k_input.strip() != "":
+                k_val = float(k_input)
+                if k_val < 3.0 or k_val > 6.0: lab_alert = True
+                lab_records_list.append(f"K {k_val}")
+            if tni_input.strip() != "":
+                tni_val = float(tni_input)
+                if tni_val > 17.5: lab_alert = True
+                lab_records_list.append(f"Hs-TnI {tni_val}")
+            if crp_input.strip() != "":
+                lab_records_list.append(f"CRP {crp_input}")
+            if lactate_input.strip() != "":
+                lac_val = float(lactate_input)
+                if lac_val >= 4.0: lab_alert = True 
+                lab_records_list.append(f"Lac {lac_val}")
+            lab_record_text = " / ".join(lab_records_list) if lab_records_list else "無異常或未驗"
+
+            # 5. 風險分層
+            if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0):
+                risk_level = "🔴 紅區 (高度風險)"
+                disposition = "立即通知醫師評估處置，強烈建議收治或轉急救區。"
+                st.error(f"系統判定：{risk_level}")
+            elif total_score >= 3:
+                risk_level = "🟡 黃區 (中度風險)"
+                disposition = "需密切觀察，增加 Vital signs 監測頻率。"
+                st.warning(f"系統判定：{risk_level}")
+            else:
+                risk_level = "🟢 綠區 (穩定狀態)"
+                disposition = "生命徵象穩定，持續常規留觀或提醒醫師評估 MBD。"
+                st.success(f"系統判定：{risk_level}")
+
+            # 6. 生成交班紀錄
+            st.subheader("📋 護理交班紀錄")
+            nursing_note = f"""[留觀風險自動評估紀錄]
+1. 評估對象：{patient_type}
+2. 當下生理數值：體溫 {temp}℃, 脈搏 {hr}次/分, 呼吸 {rr}次/分, 血壓 {sbp}mmHg
+3. 預警指標運算：{score_display} / 休克指數 (SI) {shock_index}
+4. 關鍵檢驗數值：{lab_record_text}
+5. 系統判定風險：{risk_level}
+6. 建議動向處置：{disposition}"""
+            st.code(nursing_note, language="text")
+
+            # 7. 背景寫入 LOG
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            new_record = {
+                "評估時間": current_time,
+                "類別": log_score_name,
+                "分數": total_score,
+                "休克指數": shock_index,
+                "檢驗項目": lab_record_text,
+                "系統判定": risk_level
+            }
+            df_new = pd.DataFrame([new_record])
+            if not os.path.exists(LOG_FILE):
+                df_new.to_csv(LOG_FILE, index=False, encoding='utf-8-sig')
+            else:
+                df_new.to_csv(LOG_FILE, mode='a', header=False, index=False, encoding='utf-8-sig')
+
+# ==========================================
+# 模組 2：生命徵象趨勢 (HIS 批次解析)
+# ==========================================
+elif page == "📈 趨勢分析 (查房專用)":
+    st.title("📈 留觀生命徵象趨勢分析")
+    st.markdown("將資訊系統 (HIS) 內的歷史生理數值批次貼上，系統將自動解析並繪製趨勢圖與顏色分級表。")
+    
+    batch_vitals = st.text_area("📋 請貼上 HIS 系統的多筆生命徵象表格 (直接複製貼上即可)：", height=200, 
+                                placeholder="範例：\n1150315 1400 96 20 171/91\n1150315 1430 35.9 ▽ 100 20 161/85...")
+
+    if st.button("📊 解析與繪製趨勢", type="primary"):
+        if batch_vitals.strip() != "":
+            parsed_data = []
+            for line in batch_vitals.strip().split('\n'):
+                tokens = line.split()
+                if not tokens: continue
                 
-                # 自動把民國年轉換為西元年 (例如 115 轉為 2026)，並組合成標準時間格式
-                if len(date_str) == 7 and date_str.startswith('1'):
-                    greg_year = int(date_str[:3]) + 1911
-                    dt_str = f"{date_str[3:5]}/{date_str[5:7]} {time_str[:2]}:{time_str[2:]}"
-                else:
-                    dt_str = f"{date_str} {time_str}" 
+                bp_idx = -1
+                for i, t in enumerate(tokens):
+                    if '/' in t and len(t.split('/')) == 2 and t.split('/')[0].isdigit():
+                        bp_idx = i
+                        break
+                        
+                if bp_idx >= 2:
+                    try:
+                        sbp = int(tokens[bp_idx].split('/')[0])
+                        hr = int(tokens[bp_idx-2])
+                        date_str = tokens[0] 
+                        time_str = tokens[1] 
+                        
+                        dt_str = f"{date_str[3:5]}/{date_str[5:7]} {time_str[:2]}:{time_str[2:]}" if len(date_str) == 7 else f"{date_str} {time_str}"
+                            
+                        parsed_data.append({
+                            "時間": dt_str,
+                            "心跳 (HR)": hr,
+                            "收縮壓 (SBP)": sbp,
+                            "休克指數 (SI)": round(hr / sbp, 2)
+                        })
+                    except:
+                        pass
+            
+            df = pd.DataFrame(parsed_data)
+            
+            if not df.empty:
+                st.success(f"✅ 成功解析 {len(df)} 筆生命徵象紀錄！")
+                
+                tab1, tab2, tab3 = st.tabs(["🗂️ 解析後數據表 (自動上色)", "📉 休克指數趨勢圖", "💓 血液動力學交叉圖"])
+                
+                with tab1:
+                    st.markdown("#### 依休克指數 (SI) 風險自動分色")
+                    st.caption("🔴 紅區: SI ≥ 1.0 ｜ 🟡 黃區: SI 0.8~0.99 ｜ 🟢 綠區: SI < 0.8")
                     
-                parsed_data.append({
-                    "時間": dt_str,
-                    "心跳 (HR)": hr,
-                    "收縮壓 (SBP)": sbp,
-                    "休克指數 (SI)": round(hr / sbp, 2)
-                })
-            except Exception as e:
-                pass # 如果遇到亂碼或無法解析的行，就安靜地跳過，程式不會崩潰
-                
-    return pd.DataFrame(parsed_data)
+                    def highlight_risk(row):
+                        si = row['休克指數 (SI)']
+                        if pd.isna(si): bg_color = ''
+                        elif si >= 1.0: bg_color = 'background-color: #ffcccc; color: #900000; font-weight: bold;'
+                        elif si >= 0.8: bg_color = 'background-color: #fff2cc; color: #8a6d3b;'
+                        else: bg_color = 'background-color: #e6ffe6; color: #2b542c;'
+                        return [bg_color] * len(row)
 
+                    styled_df = df.style.apply(highlight_risk, axis=1)
+                    st.dataframe(styled_df, use_container_width=True)
+                    
+                with tab2:
+                    st.markdown("#### ⚠️ 休克指數 (SI) 趨勢變化")
+                    st.line_chart(df.set_index("時間")[["休克指數 (SI)"]], color="#FF4B4B")
+                    
+                with tab3:
+                    st.markdown("#### 💓 心跳 vs. 收縮壓")
+                    st.caption("注意：當心跳線條向上交叉穿越收縮壓線條時，即代表 SI > 1.0，進入隱性休克危險期。")
+                    st.line_chart(df.set_index("時間")[["心跳 (HR)", "收縮壓 (SBP)"]])
+            else:
+                st.error("❌ 無法解析資料，請確認貼上的格式是否正確。")
 
-# --- 網頁畫面：批次趨勢圖區塊 ---
-st.subheader("📈 留觀生命徵象趨勢圖 (批次匯入)")
-batch_vitals = st.text_area("📋 請貼上 HIS 系統的多筆生命徵象表格 (直接複製貼上即可)：", height=150, placeholder="1150315 1400 96 20 171/91 92 simple Mask 6L...")
-
-if st.button("📊 繪製趨勢圖", type="secondary"):
-    if batch_vitals.strip() != "":
-        # 呼叫上面的神經中樞來處理資料
-        df = parse_his_vitals(batch_vitals)
-        
-        if not df.empty:
-            st.success(f"✅ 成功解析 {len(df)} 筆生命徵象紀錄！")
-            
-            # 使用 Tabs 把圖表跟原始數據分開，畫面更簡潔
-            tab1, tab2, tab3 = st.tabs(["📉 休克指數趨勢", "💓 心跳與血壓趨勢", "🗂️ 解析後數據表"])
-            
-            with tab1:
-                st.markdown("#### ⚠️ 休克指數 (SI) 趨勢")
-                st.caption("提示：當數值接近或大於 1.0 時，可能有潛在血流動力學不穩定風險。")
-                # 畫出紅色的折線圖
-                st.line_chart(df.set_index("時間")[["休克指數 (SI)"]], color="#FF4B4B")
-                
-            with tab2:
-                st.markdown("#### 💓 心跳 vs. 收縮壓")
-                # 同時畫出兩條線，方便看出交叉點
-                st.line_chart(df.set_index("時間")[["心跳 (HR)", "收縮壓 (SBP)"]])
-                
-            with tab3:
-                st.markdown("#### 整理後的乾淨表格")
-                st.dataframe(df, use_container_width=True)
-        else:
-            st.error("❌ 無法解析資料，請確認貼上的格式是否包含日期、時間、心跳與血壓。")
-st.divider()
-# --- 學理依據與評分標準 (折疊面板) ---
-with st.expander("📚 點此查看系統評分標準與學理依據 (Evidence-Based Practice)"):
-    st.markdown("""
-    ### 1. MEWS (Modified Early Warning Score) 早期預警分數
-    * **臨床目的**：用於早期發現潛在的病情惡化，降低院內心跳停止 (IHCA) 的發生率。
-    * **評估項目**：體溫、脈搏、呼吸、收縮壓、意識狀態 (GCS)。
-    * **風險分層**：
-        * **0 - 2 分**：穩定狀態，維持常規留觀 (綠區)。
-        * **3 - 4 分**：中度風險，需增加 Vital signs 監測頻率 (黃區)。
-        * **≥ 5 分**：高度惡化風險，需立即醫療介入或考慮收治 (紅區)。
-
-    ### 2. 休克指數 (Shock Index, SI)
-    * **計算公式**：`心率 (HR) / 收縮壓 (SBP)`
-    * **學理依據**：急診常面臨**「隱性休克 (Occult Shock)」**的挑戰。當有效循環血量減少時，身體會先以心跳加快來代償，此時血壓可能仍看似正常。SI 能在血壓崩盤前，提早揪出潛在的血流動力學不穩定。
-    * **判斷標準**：
-        * **0.5 - 0.7**：正常範圍。
-        * **> 0.8**：警戒邊緣，潛在發病率開始上升。
-        * **≥ 1.0**：危險值，死亡率與需急救介入的機率大幅提升，直接列為高度風險 (紅區)。
-
-    ### 3. 危險檢驗數值 (Critical Labs)
-    留觀期間的動態抽血變化，往往是決定動向的鐵律：
-    * **Lactate (乳酸) ≥ 4.0 mmol/L**：代表組織嚴重缺氧，為敗血性休克 (Septic Shock) 等重症的黃金指標，直接觸發紅區警告。
-    * **Hs-TnI > 17.5 ng/L**：高敏感度心肌酵素異常，提示急性心肌損傷 (如 ACS)。
-    * **K (鉀離子) < 3.0 或 > 6.0 mEq/L**：極端值極易引發致命性心律不整 (致命性 Tachycardia 或 Bradycardia)。
-    """)
+# ==========================================
+# 模組 3：管理員後台
+# ==========================================
+elif page == "🔒 管理員後台":
+    st.title("🔒 系統品管與稽核後台")
+    st.info("此區域僅供專案管理員與護理長進行資料稽核與品質管理 (QA/QC) 使用。")
     
-st.divider() # 在折疊面板下方再加一條分隔線，讓排版更乾淨
-
-if st.button("🚀 開始評估並生成紀錄", type="primary"):
-    if vitals_input.strip() == "":
-        st.error("⚠️ 請先貼上生命徵象！")
-    elif gcs_input is None:
-        st.error("⚠️ 請輸入 GCS 意識分數！")
-    else:
-        total_score = 0
-        temp = hr = rr = sbp = None 
+    admin_password = st.text_input("🔑 請輸入管理員密碼", type="password")
+    
+    if admin_password == "alex":
+        st.success("✅ 登入成功")
         
-        temp_match = re.search(r'體溫：([\d.]+)', vitals_input)
-        if temp_match:
-            temp = float(temp_match.group(1))
-            total_score += (2 if temp < 35 or temp >= 38.5 else 1 if temp < 36 else 0)
-
-        hr_match = re.search(r'脈搏：(\d+)', vitals_input)
-        if hr_match:
-            hr = int(hr_match.group(1))
-            total_score += (3 if hr <= 40 or hr >= 130 else 2 if 111 <= hr <= 129 else 1 if 41 <= hr <= 50 or 101 <= hr <= 110 else 0)
-
-        rr_match = re.search(r'呼吸：(\d+)', vitals_input)
-        if rr_match:
-            rr = int(rr_match.group(1))
-            total_score += (3 if rr >= 30 else 2 if rr <= 8 or 21 <= rr <= 29 else 1 if 15 <= rr <= 20 else 0)
-
-        sbp_match = re.search(r'血壓：(\d+)/', vitals_input)
-        if sbp_match:
-            sbp = int(sbp_match.group(1))
-            total_score += (3 if sbp <= 70 else 2 if sbp <= 80 or sbp >= 200 else 1 if sbp <= 100 else 0)
-
-        gcs_score = 0
-        if gcs_input == 15: gcs_score = 0
-        elif 13 <= gcs_input <= 14: gcs_score = 1
-        elif 9 <= gcs_input <= 12: gcs_score = 2
-        elif gcs_input <= 8: gcs_score = 3
-        total_score += gcs_score
-
-        shock_index = round(hr / sbp, 2) if (hr and sbp and sbp > 0) else "無法計算"
-
-        lab_alert = False
-        lab_records_list = []
-        
-        if k_input.strip() != "":
-            k_val = float(k_input)
-            if k_val < 3.0 or k_val > 6.0:
-                lab_alert = True
-            lab_records_list.append(f"K {k_val}")
-                
-        if tni_input.strip() != "":
-            tni_val = float(tni_input)
-            if tni_val > 17.5:
-                lab_alert = True
-            lab_records_list.append(f"TnI {tni_val}")
-
-        if crp_input.strip() != "":
-            lab_records_list.append(f"CRP {crp_input}")
-
-        if lactate_input.strip() != "":
-            lac_val = float(lactate_input)
-            if lac_val >= 4.0:
-                lab_alert = True 
-            lab_records_list.append(f"Lac {lac_val}")
-
-        risk_level = ""
-        if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0):
-            risk_level = "🔴 紅區"
-            st.error(f"判定結果：{risk_level}") 
-        elif total_score >= 3:
-            risk_level = "🟡 黃區"
-            st.warning(f"判定結果：{risk_level}") 
+        if os.path.exists(LOG_FILE):
+            df_log = pd.read_csv(LOG_FILE)
+            st.markdown(f"### 🗂️ 系統使用紀錄 (共 {len(df_log)} 筆)")
+            st.dataframe(df_log, use_container_width=True)
+            
+            col_a1, col_a2 = st.columns(2)
+            with col_a1:
+                csv = df_log.to_csv(index=False, encoding='utf-8-sig')
+                st.download_button("📥 下載完整紀錄 (CSV)", data=csv, file_name="ed_obs_log.csv", mime="text/csv")
+            with col_a2:
+                if st.button("🗑️ 清空所有紀錄", type="primary"):
+                    os.remove(LOG_FILE)
+                    st.rerun() # 自動重新整理網頁
         else:
-            risk_level = "🟢 綠區"
-            st.success(f"判定結果：{risk_level}") 
+            st.info("目前尚無任何評估紀錄。")
+    elif admin_password != "":
+        st.error("❌ 密碼錯誤")
 
-        # --- 產生護理紀錄 (給使用者複製) ---
-        st.subheader("📋 護理交班紀錄")
-        nursing_note = f"[留觀風險自動評估紀錄]\nMEWS: {total_score}分 (GCS {gcs_input}), SI: {shock_index}\n風險: {risk_level}"
-        st.code(nursing_note, language="text")
-
-        # ==========================================
-        # 隱藏的後台動作：將這筆資料寫入 CSV 檔案
-        # ==========================================
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # 準備要存進表格的一筆資料
-        new_record = {
-            "評估時間": current_time,
-            "MEWS分數": total_score,
-            "GCS": gcs_input,
-            "休克指數": shock_index,
-            "檢驗項目": " / ".join(lab_records_list) if lab_records_list else "無",
-            "系統判定": risk_level
-        }
-        
-        # 轉換成表格格式並儲存
-        df_new = pd.DataFrame([new_record])
-        if not os.path.exists(LOG_FILE):
-            df_new.to_csv(LOG_FILE, index=False, encoding='utf-8-sig') # 第一次建立檔案
-        else:
-            df_new.to_csv(LOG_FILE, mode='a', header=False, index=False, encoding='utf-8-sig') # 之後附加在原本檔案後面
-# --- 網頁頁尾：版權與免責聲明 ---
-st.divider() # 畫一條底線把主要內容隔開
-
-# 使用 HTML 語法讓文字置中、變小、變灰色，看起來更像專業的網頁頁尾
+# ==========================================
+# 全域頁尾：版權與免責聲明
+# ==========================================
+st.markdown("<br><br>", unsafe_allow_html=True)
+st.divider()
 st.markdown("""
 <div style="text-align: center; color: gray; font-size: 0.85em;">
-    <p><strong>© 2026 急診留觀風險自動評估系統</strong> | Designed by [護理師 吳智弘]</p>
-    <p>⚠️ <b>免責聲明：</b>本系統基於臨床實證醫學 (EBP) 開發，主要作為急診護理人員之交班與風險分層輔助工具，評估結果不可替代臨床醫師之專業診斷與決策。</p>
+    <p><strong>© 2026 急診留觀風險自動評估系統</strong> | 臨床決策輔助工具</p>
+    <p>⚠️ <b>免責聲明：</b>本系統基於臨床實證醫學 (EBP) 開發，主要作為急診護理人員之交班與風險分層輔助，評估結果不可替代臨床醫師之專業診斷。</p>
     <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">
         <img alt="創用 CC 授權條款" style="border-width:0; margin-bottom: 5px;" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png" />
     </a>
