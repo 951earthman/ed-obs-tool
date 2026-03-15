@@ -305,6 +305,7 @@ st.divider()
 st.markdown("""
 <div style="text-align: center; color: gray; font-size: 0.85em;">
     <p><strong>© 2026 急診留觀風險自動評估系統</strong> | 臨床決策輔助工具</p>
+    <p>💡 <b>System Design & Clinical Logic by：</b>花蓮慈濟急診 [護理師 吳智弘] (D-MAT / BLS Instructor)</p>
     <p>⚠️ <b>免責聲明：</b>本系統基於臨床實證醫學 (EBP) 開發，主要作為急診護理人員之交班與風險分層輔助，評估結果不可替代臨床醫師之專業診斷。</p>
     <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">
         <img alt="創用 CC 授權條款" style="border-width:0; margin-bottom: 5px;" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png" />
