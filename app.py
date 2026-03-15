@@ -93,7 +93,7 @@ page = st.sidebar.radio("請選擇功能模組：", [
     "🔒 管理員後台"
 ])
 st.sidebar.divider()
-st.sidebar.caption("臨床決策輔助系統 v4.0")
+st.sidebar.caption("臨床實證醫學輔助系統 v5.0")
 
 # ==========================================
 # 模組 1：單次評估與交班 (成人 MEWS / 兒科 PEWS + IV Pump)
@@ -118,6 +118,7 @@ if page == "📝 單次評估 (交班專用)":
 
         ### 4. 危險檢驗數值 (Critical Labs)
         * **Lactate ≥ 4.0**：組織嚴重缺氧，敗血性休克黃金指標 (紅區)。
+        * **CRP ≥ 10.0 mg/dL**：高度提示嚴重細菌感染與菌血症風險，死亡與重症率顯著上升 (紅區)。
         * **Hs-TnI > 17.5**：高敏感度心肌酵素異常。
         * **K (鉀離子) < 3.0 或 > 6.0**：致命性心律不整高風險。
         
@@ -202,22 +203,35 @@ if page == "📝 單次評估 (交班專用)":
 
             shock_index = round(hr / sbp, 2) if (hr and sbp and sbp > 0) else "無法計算"
 
-            # 檢驗數值判定
+            # 檢驗數值判定 (含全新 CRP 邏輯)
             lab_alert = False
             lab_records_list = []
+            
             if k_input.strip() != "":
                 k_val = float(k_input)
                 if k_val < 3.0 or k_val > 6.0: lab_alert = True
                 lab_records_list.append(f"K {k_val}")
+                
             if tni_input.strip() != "":
                 tni_val = float(tni_input)
                 if tni_val > 17.5: lab_alert = True
                 lab_records_list.append(f"Hs-TnI {tni_val}")
-            if crp_input.strip() != "": lab_records_list.append(f"CRP {crp_input}")
+                
+            if crp_input.strip() != "":
+                crp_val = float(crp_input)
+                if crp_val >= 10.0:
+                    lab_alert = True 
+                    lab_records_list.append(f"CRP {crp_val} (危險 ≥ 10.0)")
+                elif crp_val >= 5.0:
+                    lab_records_list.append(f"CRP {crp_val} (顯著發炎 ≥ 5.0)")
+                else:
+                    lab_records_list.append(f"CRP {crp_val}")
+                    
             if lactate_input.strip() != "":
                 lac_val = float(lactate_input)
                 if lac_val >= 4.0: lab_alert = True 
                 lab_records_list.append(f"Lac {lac_val}")
+                
             lab_record_text = " / ".join(lab_records_list) if lab_records_list else "無異常或未驗"
 
             # IV Pump 判定
