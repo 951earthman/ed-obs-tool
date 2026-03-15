@@ -185,4 +185,17 @@ if st.button("🚀 開始評估並生成紀錄", type="primary"):
             df_new.to_csv(LOG_FILE, index=False, encoding='utf-8-sig') # 第一次建立檔案
         else:
             df_new.to_csv(LOG_FILE, mode='a', header=False, index=False, encoding='utf-8-sig') # 之後附加在原本檔案後面
-st.caption("© 2026 [護理師 吳智弘] 開發設計. 版權所有。")
+# --- 網頁頁尾：版權與免責聲明 ---
+st.divider() # 畫一條底線把主要內容隔開
+
+# 使用 HTML 語法讓文字置中、變小、變灰色，看起來更像專業的網頁頁尾
+st.markdown("""
+<div style="text-align: center; color: gray; font-size: 0.85em;">
+    <p><strong>© 2026 急診留觀風險自動評估系統</strong> | Designed by [護理師 吳智弘]</p>
+    <p>⚠️ <b>免責聲明：</b>本系統基於臨床實證醫學 (EBP) 開發，主要作為急診護理人員之交班與風險分層輔助工具，評估結果不可替代臨床醫師之專業診斷與決策。</p>
+    <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">
+        <img alt="創用 CC 授權條款" style="border-width:0; margin-bottom: 5px;" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png" />
+    </a>
+    <br />本專案採用<a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" style="color: gray; text-decoration: underline;">創用 CC 姓名標示-非商業性-相同方式分享 4.0 國際 授權條款</a>授權。
+</div>
+""", unsafe_allow_html=True)
