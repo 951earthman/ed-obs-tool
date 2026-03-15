@@ -158,6 +158,33 @@ if page == "📝 單次評估 (交班專用)":
     with col2:
         tni_input = st.text_input("➤ Hs-TnI：")
         lactate_input = st.text_input("➤ Lactate (乳酸)：")
+        st.subheader("💉 高危險連續輸液 (IV Pump)")
+# 使用 st.multiselect 讓護理師可以複選多種藥物
+iv_pumps = st.multiselect(
+    "➤ 請問病患目前是否使用以下滴注藥物？ (可複選，若無則留白)",
+    ["Levophed (Norepinephrine)", "easydopamine (Dopamine)", "Isoket (Isosorbide dinitrate)", "Perdipine (Nicardipine)", "其他降壓/強心滴注"]
+)
+
+# --- 在後方的風險判定邏輯中，加入 Pump 的影響 ---
+# 判斷是否使用 A 類 (升壓) 或 B 類 (降壓)
+has_vasopressor = any("Levophed" in pump or "easydopamine" in pump for pump in iv_pumps)
+has_vasodilator = any("Isoket" in pump or "Perdipine" in pump for pump in iv_pumps)
+
+# (原本的 total_score 和 lab_alert 計算維持不變)
+
+# 風險分層邏輯更新：
+if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0) or has_vasopressor:
+    risk_level = "🔴 紅區 (高度風險)"
+    disposition = "病患具高度惡化或休克風險 (依賴升壓劑/危險數值)，強烈建議收治 ICU 或留在急救區。"
+    st.error(f"系統判定：{risk_level}")
+elif total_score >= 3 or has_vasodilator:
+    risk_level = "🟡 黃區 (中度風險)"
+    disposition = "需密切觀察，因使用高危險輸液，建議縮短 Vital signs 監測頻率 (如 Q15m - Q1H)。"
+    st.warning(f"系統判定：{risk_level}")
+else:
+    risk_level = "🟢 綠區 (穩定狀態)"
+    disposition = "生命徵象穩定，持續常規留觀或提醒醫師評估 MBD。"
+    st.success(f"系統判定：{risk_level}")
 
     if st.button("🚀 開始評估並生成紀錄", type="primary"):
         if vitals_input.strip() == "":
