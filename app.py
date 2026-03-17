@@ -144,7 +144,7 @@ if page == "📝 留觀風險評估 (交班)":
 
     st.subheader("⚠️ 3. 潛在不穩定主訴與病史")
     high_risk_cc = st.multiselect("➤ 是否有易發生「突發惡化」狀況？", 
-                                  ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", "🫁 嚴重氣喘/COPD", "☠️ 嚴重低血糖/酒精戒斷"])
+                                  ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", " 嚴重氣喘/COPD", " 嚴重低血糖/酒精戒斷"])
 
     st.subheader("🧪 4. 補充檢驗報告")
     col1, col2 = st.columns(2)
