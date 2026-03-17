@@ -9,7 +9,8 @@ import os
 # ==========================================
 st.set_page_config(page_title="急診臨床決策輔助系統", page_icon="🚨", layout="wide")
 LOG_FILE = "assessment_log.csv"
-SYSTEM_VERSION = "v16.0"
+FEEDBACK_FILE = "feedback_log.csv"  # <-- 全新加入：反饋紀錄檔
+SYSTEM_VERSION = "v17.0"
 LAST_UPDATE = "2026-03"
 NEXT_REVIEW = "2027-01 (配合 ADA 最新指引發布)"
 
@@ -64,25 +65,24 @@ def parse_his_vitals(raw_text):
 # ==========================================
 # 側邊欄 (Sidebar)：導覽、學理搜尋、實用連結
 # ==========================================
-st.sidebar.title("🏥 急診臨床決策輔助系統")
+st.sidebar.title("🏥 急診超級瑞士刀")
 page = st.sidebar.radio("請選擇功能模組：", [
     "📝 留觀風險評估 (交班)", 
     "📈 生命徵象趨勢 (查房)",
     "🩸 ABG 血液氣體判讀",
     "💉 血液檢驗報告 (CBC+BCS)",
     "💧 DKA/HHS 動態導航 (ADA標準)",
-    "📖 參考文獻與系統更新"  # <-- 全新加入的實證醫學分頁
+    "📖 參考文獻與系統更新",
+    "💬 系統意見反饋"  # <-- 全新加入的分頁
 ])
 
 st.sidebar.divider()
 
-# --- 實用外部連結 ---
 st.sidebar.subheader("🔗 實用快速連結")
 st.sidebar.markdown("💊 [**院內藥物查詢系統**](https://hldrug.tzuchi.com.tw/tchw/IphqryChinese/DesktopModules/WesternMedicine/Pill_Search.aspx?Hospital=HL)", unsafe_allow_html=True)
 
 st.sidebar.divider()
 
-# --- 整合後的學理依據 (EBP) 搜尋系統 ---
 st.sidebar.subheader("📚 臨床機轉小寶典 (EBP)")
 st.sidebar.caption("輸入關鍵字，快速複習急診生理機轉。")
 search_query = st.sidebar.text_input("🔍 搜尋 (例: 酮體, 鉀, AKI)", "").strip().lower()
@@ -108,15 +108,38 @@ for title, content in ebp_dict.items():
             st.write(content)
 
 st.sidebar.divider()
+
+# --- 全新改版的管理員後台 (加入 Tabs 切換) ---
 st.sidebar.subheader("🔒 管理員後台")
-admin_password = st.sidebar.text_input("輸入密碼解鎖後台", type="password")
+admin_password = st.sidebar.text_input("輸入密碼解鎖", type="password")
 if admin_password == "alex":
     st.sidebar.success("✅ 身分驗證成功")
-    if os.path.exists(LOG_FILE):
-        df_log = pd.read_csv(LOG_FILE)
-        st.sidebar.download_button("📥 下載完整紀錄", data=df_log.to_csv(index=False, encoding='utf-8-sig'), file_name="ed_obs_log.csv", mime="text/csv", use_container_width=True)
-        if st.sidebar.button("🗑️ 清空所有紀錄", use_container_width=True):
-            os.remove(LOG_FILE); st.rerun()
+    
+    # 使用 Tabs 將兩種類型的紀錄分開顯示
+    tab_log, tab_fb = st.sidebar.tabs(["📝 評估紀錄", "💬 意見反饋"])
+    
+    with tab_log:
+        if os.path.exists(LOG_FILE):
+            df_log = pd.read_csv(LOG_FILE)
+            st.caption(f"共 {len(df_log)} 筆紀錄")
+            st.download_button("📥 下載紀錄", data=df_log.to_csv(index=False, encoding='utf-8-sig'), file_name="ed_obs_log.csv", mime="text/csv", key="dl_log", use_container_width=True)
+            if st.button("🗑️ 清空紀錄", key="clr_log", use_container_width=True):
+                os.remove(LOG_FILE); st.rerun()
+        else:
+            st.info("尚無評估紀錄。")
+            
+    with tab_fb:
+        if os.path.exists(FEEDBACK_FILE):
+            df_fb = pd.read_csv(FEEDBACK_FILE)
+            st.caption(f"共 {len(df_fb)} 筆反饋")
+            st.dataframe(df_fb, use_container_width=True) # 讓你在後台可以直接預覽反饋內容
+            st.download_button("📥 下載反饋", data=df_fb.to_csv(index=False, encoding='utf-8-sig'), file_name="ed_feedback_log.csv", mime="text/csv", key="dl_fb", use_container_width=True)
+            if st.button("🗑️ 清空反饋", key="clr_fb", use_container_width=True):
+                os.remove(FEEDBACK_FILE); st.rerun()
+        else:
+            st.info("尚無反饋。")
+elif admin_password != "":
+    st.sidebar.error("❌ 密碼錯誤")
 
 # ==========================================
 # 模組 1：留觀單次評估與交班
@@ -163,7 +186,7 @@ if page == "📝 留觀風險評估 (交班)":
 
             if patient_type == "🧑 成人 (MEWS標準)":
                 if temp: total_score += (2 if temp < 35 or temp >= 38.5 else 1 if temp < 36 else 0)
-                if hr: total_score += (3 if hr <= 40 or hr >= 130 else 2 if 111 <= hr <= 129 else 1 if 41 <= hr <= 50 or 101 <= hr <= 110 else 0)
+                if hr: total_score += (3 if hr <= 40 or hr >= 130 else 2 if 111 <= 129 else 1 if 41 <= hr <= 50 or 101 <= hr <= 110 else 0)
                 if rr: total_score += (3 if rr >= 30 else 2 if rr <= 8 or 21 <= rr <= 29 else 1 if 15 <= rr <= 20 else 0)
                 if sbp: total_score += (3 if sbp <= 70 else 2 if sbp <= 80 or sbp >= 200 else 1 if sbp <= 100 else 0)
                 gcs_score = 0 if gcs_input == 15 else 1 if 13 <= gcs_input <= 14 else 2 if 9 <= gcs_input <= 12 else 3
@@ -466,41 +489,65 @@ elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
                     st.warning(f"📉 **降幅 > 75 mg/dL (降太快)**：\n建議適度調降 Pump 速率。\n👉 建議新滴數：**{new_rate:.1f} mL/hr**")
 
 # ==========================================
-# 模組 6：參考文獻與系統更新 (全新加入)
+# 模組 6：參考文獻與系統更新
 # ==========================================
 elif page == "📖 參考文獻與系統更新":
     st.title("📖 參考文獻與系統版本紀錄")
     st.markdown("為確保臨床安全與決策品質，本系統之評估邏輯皆基於最新版國際醫學實證指引 (EBP) 建立。")
-    
     st.info(f"🔄 **當前系統版本**：{SYSTEM_VERSION} (最後更新：{LAST_UPDATE})\n\n📅 **預計下次全系統學理審查**：{NEXT_REVIEW}")
-    
     st.divider()
-    
     st.subheader("📚 核心評估邏輯文獻來源")
-    
-    # 使用 Markdown 表格呈現文獻，乾淨俐落
     st.markdown("""
     | 臨床決策模組 | 國際指引 / 實證出處 |
     | :--- | :--- |
     | **MEWS / PEWS 早期預警分數** | Royal College of Physicians (RCP), *National Early Warning Score (NEWS)* 及急診醫學標準教科書 (Tintinalli's Emergency Medicine)。 |
-    | **DKA / HHS 動態導航系統** | American Diabetes Association (ADA). *Standards of Medical Care in Diabetes - 2026*, Section 16: Diabetes Care in the Hospital. |
+    | **DKA / HHS 動態導航系統** | American Diabetes Association (ADA). *Standards of Medical Care in Diabetes*, Section 16: Diabetes Care in the Hospital. |
     | **CKD (慢性腎臟病) 分級** | KDIGO 2024 Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease. |
     | **急診留觀室 (EDOU) 高危主訴** | American College of Emergency Physicians (ACEP). *Management of Observation Units* 臨床指引。 |
-    | **敗血症與 Lactate 警示** | Surviving Sepsis Campaign: International Guidelines for Management of Sepsis and Septic Shock (SSC). |
     | **血鈉校正公式 (Hillier)** | Hillier TA, et al. *Hyponatremia: evaluating the correction factor for hyperglycemia.* Am J Med. 1999. |
-    | **鈣離子白蛋白校正** | 依據標準內科學 (Harrison's Principles of Internal Medicine) 之低血鈣校正公式。 |
     """)
-
     st.divider()
-    
     st.subheader("📝 系統維護日誌 (Changelog)")
     st.markdown("""
+    * **[v17.0] 2026-03**：新增「意見反饋區」，並將管理員後台升級為雙層架構，方便追蹤評估紀錄與使用者回饋。
     * **[v16.0] 2026-03**：新增 EBP 參考文獻與版本追蹤系統，確立年度審查機制。
-    * **[v15.1] 2026-03**：優化介面流暢度，移除第三方 API 依賴，確保院內封閉網路環境下百分之百穩定運作。新增側邊欄藥物查詢捷徑。
+    * **[v15.1] 2026-03**：優化介面流暢度，新增側邊欄藥物查詢捷徑與自動飲食防呆警示。
     * **[v14.0] 2026-03**：全面整合 DKA/HHS 導航系統 (含動態血鉀攔截機制與滲透壓運算)。
-    * **[v13.0] 2026-03**：加入進階生化與肝膽模組 (T.Bil, Albumin, 鈣離子校正, Mg)。
-    * **[v12.0] 2026-03**：完成 HIS 系統多筆生命徵象趨勢批次匯入與圖表化功能。
     """)
+
+# ==========================================
+# 模組 7：全新加入的系統意見反饋
+# ==========================================
+elif page == "💬 系統意見反饋":
+    st.title("💬 系統意見反饋與優化建議")
+    st.markdown("本系統為花蓮慈濟急診專屬開發，您的每一個回饋都是系統持續進化的養分！若您在使用中遇到 **Bug、學理疑問、或是覺得哪個按鈕不順手**，請隨時告訴我。")
+    
+    with st.form("feedback_form", clear_on_submit=True):
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            fb_name = st.text_input("您的稱呼 (可選填)：", placeholder="例：白班學妹")
+        with col_f2:
+            fb_type = st.selectbox("反饋類型：", ["🐞 系統錯誤 (Bug)", "💡 功能許願 (Feature Request)", "📚 學理邏輯建議 (EBP)", "🎨 介面操作不順手 (UX/UI)", "其他"])
+            
+        fb_content = st.text_area("請描述您的建議或遇到的問題 ⚠️必填：", height=150)
+        
+        submitted = st.form_submit_button("🚀 送出反饋", type="primary", use_container_width=True)
+        
+        if submitted:
+            if fb_content.strip() == "":
+                st.error("⚠️ 請填寫反饋內容喔！")
+            else:
+                new_fb = pd.DataFrame([{
+                    "時間": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "稱呼": fb_name if fb_name.strip() != "" else "匿名",
+                    "類型": fb_type,
+                    "內容": fb_content
+                }])
+                if not os.path.exists(FEEDBACK_FILE):
+                    new_fb.to_csv(FEEDBACK_FILE, index=False, encoding='utf-8-sig')
+                else:
+                    new_fb.to_csv(FEEDBACK_FILE, mode='a', header=False, index=False, encoding='utf-8-sig')
+                st.success("✅ 感謝您的反饋！我會在後台看到並盡快優化！")
 
 # ==========================================
 # 全域頁尾
