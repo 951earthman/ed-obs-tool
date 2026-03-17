@@ -3,6 +3,8 @@ import pandas as pd
 import re
 from datetime import datetime
 import os
+import google.generativeai as genai
+from PIL import Image
 
 # ==========================================
 # 系統設定與全域變數
@@ -67,12 +69,12 @@ page = st.sidebar.radio("請選擇功能模組：", [
     "📈 生命徵象趨勢 (查房)",
     "🩸 ABG 血液氣體判讀",
     "💉 血液檢驗報告 (CBC+BCS)",
-    "💧 DKA/HHS 動態導航 (ADA標準)"  # <-- 更新名稱
+    "💧 DKA/HHS 動態導航 (ADA標準)",
+    "🫀 AI 心電圖判讀 (Gemini Vision)" 
 ])
 
 st.sidebar.divider()
 
-# --- 整合後的學理依據 (EBP) 搜尋系統 ---
 st.sidebar.subheader("📚 臨床機轉小寶典 (EBP)")
 st.sidebar.caption("輸入關鍵字，快速複習急診重症生理機轉。")
 search_query = st.sidebar.text_input("🔍 搜尋 (例: 酮體, 鉀, 腦水腫, AKI)", "").strip().lower()
@@ -100,7 +102,6 @@ if not found and search_query != "":
 
 st.sidebar.divider()
 
-# --- 管理員系統 ---
 st.sidebar.subheader("🔒 管理員後台")
 admin_password = st.sidebar.text_input("輸入密碼解鎖後台", type="password")
 if admin_password == "alex":
@@ -117,7 +118,7 @@ elif admin_password != "":
     st.sidebar.error("❌ 密碼錯誤")
 
 # ==========================================
-# 模組 1：留觀單次評估與交班
+# 模組 1-5 (留觀/趨勢/ABG/抽血/DKA)
 # ==========================================
 if page == "📝 留觀風險評估 (交班)":
     st.title("🚨 急診留觀風險自動評估與交班")
@@ -140,8 +141,7 @@ if page == "📝 留觀風險評估 (交班)":
     iv_pumps = st.multiselect("➤ 病患是否使用滴注藥物？", ["Levophed", "easydopamine", "Isoket", "Perdipine", "其他降壓或強心"])
 
     st.subheader("⚠️ 3. 潛在不穩定主訴與病史")
-    high_risk_cc = st.multiselect("➤ 是否有易發生「突發惡化」狀況？", 
-                                  ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", "🫁 嚴重氣喘/COPD", "☠️ 嚴重低血糖/酒精戒斷"])
+    high_risk_cc = st.multiselect("➤ 是否有易發生「突發惡化」狀況？", ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", "🫁 嚴重氣喘/COPD", "☠️ 嚴重低血糖/酒精戒斷"])
 
     st.subheader("🧪 4. 補充檢驗報告")
     col1, col2 = st.columns(2)
@@ -186,7 +186,6 @@ if page == "📝 留觀風險評估 (交班)":
             has_vasopressor = any("Levophed" in p or "easydopamine" in p for p in iv_pumps)
             has_vasodilator = any("Isoket" in p or "Perdipine" in p for p in iv_pumps)
             pump_record_text = " / ".join(iv_pumps) if iv_pumps else "無"
-            
             has_high_risk_cc = len(high_risk_cc) > 0
             cc_record_text = " / ".join(high_risk_cc) if has_high_risk_cc else "無"
 
@@ -216,9 +215,6 @@ if page == "📝 留觀風險評估 (交班)":
             if not os.path.exists(LOG_FILE): new_record.to_csv(LOG_FILE, index=False, encoding='utf-8-sig')
             else: new_record.to_csv(LOG_FILE, mode='a', header=False, index=False, encoding='utf-8-sig')
 
-# ==========================================
-# 模組 2：生命徵象趨勢 (查房)
-# ==========================================
 elif page == "📈 生命徵象趨勢 (查房)":
     st.title("📈 留觀生命徵象趨勢分析")
     batch_vitals = st.text_area("📋 請貼上 HIS 系統的多筆生命徵象表格：", height=200)
@@ -237,9 +233,6 @@ elif page == "📈 生命徵象趨勢 (查房)":
             with tab2: st.line_chart(df.set_index("時間")[["休克指數 (SI)"]], color="#FF4B4B")
             with tab3: st.line_chart(df.set_index("時間")[["心跳 (HR)", "收縮壓 (SBP)"]])
 
-# ==========================================
-# 模組 3：ABG 血液氣體判讀
-# ==========================================
 elif page == "🩸 ABG 血液氣體判讀":
     st.title("🩸 動脈血液氣體分析 (ABG) 快速判讀")
     abg_input = st.text_area("📋 請貼上 HIS 系統的 Blood Gas 報告：", height=200)
@@ -268,13 +261,9 @@ elif page == "🩸 ABG 血液氣體判讀":
             if po2: col4.metric("pO2", po2, oxy, delta_color="inverse")
             st.code(f"[ABG 判讀]\npH {ph} / pCO2 {pco2} / HCO3 {hco3} / pO2 {po2}\n判讀: {primary} {comp} ({oxy})", language="text")
 
-# ==========================================
-# 模組 4：綜合抽血報告 (CBC + BCS)
-# ==========================================
 elif page == "💉 血液檢驗報告 (CBC+BCS)":
     st.title("💉 綜合抽血報告快速判讀 (CBC + BCS)")
     blood_input = st.text_area("📋 請貼上抽血報告 (可直接 Ctrl+A 全選貼上)：", height=250)
-    
     if st.button("🔬 綜合解析報告", type="primary") and blood_input.strip() != "":
         wbc = float(re.search(r'WBC\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'WBC\s+([\d.]+)', blood_input, re.IGNORECASE) else None
         hb = float(re.search(r'Hb\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'Hb\s+([\d.]+)', blood_input, re.IGNORECASE) else None
@@ -344,20 +333,14 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
         
         st.code(f"[抽血檢驗判讀]\n1. 免疫：ANC {anc} / 貧血：Hb {hb} ({anemia_status})\n2. 腎臟：BUN/CRE {bc_ratio} ({renal_status}) / CKD: {ckd_status.split(' ')[0]}\n3. 肝膽：AST {ast} / ALT {alt} ({liver_status.split(' ')[0]})\n4. 電解質：Na {na} / K {k} / Ca(校正) {ca_display} / Mg {mg}", language="text")
 
-# ==========================================
-# 模組 5：ADA 標準 DKA/HHS 動態導航系統
-# ==========================================
 elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
     st.title("🚨 ADA 標準 DKA/HHS 動態導航系統")
     st.markdown("**基於美國糖尿病學會 (ADA) 高血糖危機處置指引，內建滲透壓與動態血鉀防護**")
-    st.caption("配方預設：Regular Insulin 100U + 0.9% N/S 100mL (1 U/mL = 1 mL/hr = 1 U/hr)")
-
     disease_type = st.radio("👉 請選擇病患的疾病型態：", ["DKA (糖尿病酮酸血症) - 轉換點 200", "HHS (高滲透壓高血糖狀態) - 轉換點 300"], horizontal=True)
 
     tab1, tab2 = st.tabs(["Phase 1: 初始評估與給藥 (Initial)", "Phase 2: 動態滴定與轉換 (Titration)"])
 
     with tab1:
-        st.header("Phase 1: 初始給藥與輸液評估")
         col1, col2 = st.columns(2)
         with col1:
             weight_p1 = st.number_input("病患體重 (kg)", min_value=30.0, max_value=200.0, value=60.0, step=1.0, key="w1")
@@ -369,36 +352,35 @@ elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
 
         if st.button("計算 ADA 初始醫囑", type="primary", key="btn1"):
             st.divider()
-            st.subheader("🧠 0. 有效血液滲透壓 (Effective Osmolality)")
+            st.subheader("🧠 0. 有效血液滲透壓")
             eff_osmo = (2 * init_na) + (init_gluc / 18)
-            st.markdown(f"系統依據 (2 × Na + Glucose/18) 計算，有效滲透壓為：**{eff_osmo:.1f} mOsm/kg**")
-            if eff_osmo > 320: st.error("🚨 **診斷提示：滲透壓 > 320 mOsm/kg！**\n\n此為典型 HHS 超高滲透壓狀態，前期需極度積極補充水分。")
-            else: st.info("💡 滲透壓 ≤ 320 mOsm/kg。若病患有嚴重意識不清，請同步排除其他非高血糖神經學因素。")
+            st.markdown(f"有效滲透壓為：**{eff_osmo:.1f} mOsm/kg**")
+            if eff_osmo > 320: st.error("🚨 **診斷提示：滲透壓 > 320 mOsm/kg！** (典型 HHS，前期需極度積極補充水分)")
+            else: st.info("💡 滲透壓 ≤ 320 mOsm/kg。")
 
             st.subheader("💧 1. 初始液體復甦 (第一小時)")
-            st.info("優先給予 **0.9% NaCl** 1000 - 1500 mL/hr 快速滴注。*(心腎衰竭請醫師重新評估)*")
+            st.info("優先給予 **0.9% NaCl** 1000 - 1500 mL/hr 快速滴注。")
 
             st.subheader("🛑 2. 血鉀檢核 (Potassium Check)")
-            if init_k < 3.3: st.error(f"**絕對禁忌：血鉀 {init_k} < 3.3 mEq/L！**\n\n**HOLD INSULIN (禁止啟動胰島素)！**\n請先由靜脈補充 KCl 20-30 mEq/hr，直到 K+ ≥ 3.3。")
-            elif 3.3 <= init_k <= 5.3: st.success(f"**血鉀 {init_k} mEq/L：安全範圍。**\n\n允許啟動 Insulin。於每公升點滴中加入 **20-30 mEq KCl** (目標維持血鉀 4-5)。")
-            else: st.warning(f"**血鉀 {init_k} mEq/L：偏高。**\n\n允許啟動 Insulin。點滴**暫不加鉀**，請嚴密追蹤。")
+            if init_k < 3.3: st.error(f"**絕對禁忌：血鉀 {init_k} < 3.3 mEq/L！**\n\n**HOLD INSULIN (禁止啟動胰島素)！**\n請先補充 KCl，直到 K+ ≥ 3.3。")
+            elif 3.3 <= init_k <= 5.3: st.success(f"**血鉀 {init_k} mEq/L (安全範圍)。**\n允許啟動 Insulin。於點滴中加入 **20-30 mEq KCl**。")
+            else: st.warning(f"**血鉀 {init_k} mEq/L (偏高)。**\n允許啟動 Insulin。點滴**暫不加鉀**。")
 
             st.subheader("🧪 3. 校正血鈉與維持輸液 (第二小時起)")
             factor_used = 1.6 if init_gluc <= 400 else 2.4
             corr_na = init_na + factor_used * ((init_gluc - 100) / 100)
-            st.markdown(f"系統採用 **{factor_used}** 係數計算，校正血鈉為：**{corr_na:.1f} mEq/L**")
-            if corr_na >= 135: st.warning("👉 處置：維持點滴改掛 **0.45% NaCl** (250-500 mL/hr)，以補充游離水。")
-            else: st.success("👉 處置：維持點滴續掛 **0.9% NaCl** (250-500 mL/hr)。")
+            st.markdown(f"校正血鈉為：**{corr_na:.1f} mEq/L**")
+            if corr_na >= 135: st.warning("👉 維持點滴改掛 **0.45% NaCl** (250-500 mL/hr)。")
+            else: st.success("👉 維持點滴續掛 **0.9% NaCl** (250-500 mL/hr)。")
 
             st.subheader("💉 4. 胰島素初始給藥")
-            if init_k >= 3.3: st.info(f"**ADA 建議：**\n* **作法 A**：IV Bolus **{(weight_p1 * 0.1):.1f} U**，隨後 Pump 設定 **{(weight_p1 * 0.1):.1f} mL/hr**。\n* **作法 B**：無 Bolus，直接設定 Pump **{(weight_p1 * 0.14):.1f} mL/hr**。")
+            if init_k >= 3.3: st.info(f"**作法 A**：IV Bolus **{(weight_p1 * 0.1):.1f} U**，隨後 Pump **{(weight_p1 * 0.1):.1f} mL/hr**。\n* **作法 B**：無 Bolus，Pump **{(weight_p1 * 0.14):.1f} mL/hr**。")
 
             st.subheader("🩺 5. 酸鹼平衡 (Bicarbonate)")
             if ph_val < 6.9: st.error(f"**pH {ph_val} < 6.9：極度酸血症！**\n建議給予 100 mmol NaHCO3 滴注。")
-            else: st.success(f"**pH {ph_val} ≥ 6.9**：不建議常規給予碳酸氫鈉。")
+            else: st.success(f"**pH {ph_val} ≥ 6.9**：不建議給予碳酸氫鈉。")
 
     with tab2:
-        st.header("Phase 2: Pump 動態滴數調整 (Q1H/Q2H)")
         col3, col4 = st.columns(2)
         with col3:
             weight_p2 = st.number_input("病患體重 (kg)", min_value=30.0, max_value=200.0, value=60.0, step=1.0, key="w2")
@@ -414,13 +396,11 @@ elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
 
         if st.button("計算 ADA 最新滴數", type="primary", key="btn2"):
             st.divider()
-            
             if has_new_k and new_k < 3.3:
-                st.error(f"🛑 **動態血鉀攔截：最新血鉀 {new_k} < 3.3 mEq/L！**\n\n**必須立刻關閉 Insulin Pump！**\n請先靜脈補充 KCl，待 K+ ≥ 3.3 後再重新啟動。")
+                st.error(f"🛑 **動態血鉀攔截：最新血鉀 {new_k} < 3.3 mEq/L！**\n\n**必須立刻關閉 Insulin Pump！**\n請先靜脈補充 KCl，待 K+ ≥ 3.3 後再啟動。")
                 st.stop()
             elif has_new_k and new_k > 5.3: st.warning(f"⚠️ **最新血鉀 {new_k} > 5.3 mEq/L**：請確認已停止加入 KCl。")
             elif has_new_k: st.success(f"✅ **最新血鉀 {new_k} mEq/L (安全)**：確認點滴中持續加入 KCl。")
-            else: st.info("🔔 **安全提醒**：未輸入最新血鉀，請確認已安排 Q2-Q4H 追蹤。")
 
             st.markdown("---")
             target_threshold = 200 if "DKA" in disease_type else 300
@@ -432,9 +412,9 @@ elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
             elif new_gluc <= target_threshold:
                 min_rate = max(0.5, weight_p2 * 0.02)
                 half_rate = max(min_rate, current_rate / 2)
-                st.error(f"🚨 **ADA 關鍵防護期**：{disease_type} 血糖已達 {new_gluc} mg/dL！\n必須**立刻同時**執行以下兩項：")
+                st.error(f"🚨 **ADA 關鍵防護期**：{disease_type} 血糖已達 {new_gluc} mg/dL！\n必須**立刻**執行：")
                 st.warning("1. **加糖**：維持點滴立即加入 5% 葡萄糖 (改為 **D5W + 0.45% NaCl**)。")
-                st.warning(f"2. **降速**：建議直接將原速率減半為 **{half_rate:.1f} mL/hr** (鎖定最低底線 {min_rate:.1f})。")
+                st.warning(f"2. **降速**：建議直接將原速率減半為 **{half_rate:.1f} mL/hr**。")
                 st.info(f"🎯 **後續 ADA 目標**：將血糖穩定鎖定在 **{target_range} mg/dL** 之間，直到酸中毒解除。")
             else:
                 st.write(f"過去期間血糖降幅：**{drop:.0f} mg/dL**")
@@ -444,14 +424,84 @@ elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
                 if drop < 50:
                     doubled_rate = current_rate * 2
                     if doubled_rate > 15.0: st.error(f"🛑 **滴數已達安全上限 ({doubled_rate:.1f} mL/hr)！**\n請強烈懷疑 **IV 管路漏針 (Infiltration)** 或阻塞！")
-                    else: st.warning(f"📉 **降幅 < 50 mg/dL (降太慢)**：\nADA 建議將連續輸注速率**加倍 (Double)**。\n👉 建議新滴數：**{doubled_rate:.1f} mL/hr**")
+                    else: st.warning(f"📉 **降幅 < 50 mg/dL (降太慢)**：\n建議新滴數：**{doubled_rate:.1f} mL/hr**")
                 elif 50 <= drop <= 75:
-                    st.success(f"✨ **降幅 50-75 mg/dL (完美達標)**：\n👉 維持原速率不動。\n🎯 **維持滴數：{current_rate:.1f} mL/hr**")
+                    st.success(f"✨ **降幅 50-75 mg/dL (完美達標)**：\n🎯 **維持滴數：{current_rate:.1f} mL/hr**")
                 else:
                     adjust = weight_p2 * 0.05
                     min_allowed = max(0.5, weight_p2 * 0.02)
                     new_rate = max(min_allowed, current_rate - adjust)
                     st.warning(f"📉 **降幅 > 75 mg/dL (降太快)**：\n建議適度調降 Pump 速率。\n👉 建議新滴數：**{new_rate:.1f} mL/hr**")
+
+# ==========================================
+# 模組 6：AI 心電圖判讀 (Gemini Vision)
+# ==========================================
+elif page == "🫀 AI 心電圖判讀 (Gemini Vision)":
+    st.title("🫀 AI 心電圖智慧判讀 (Gemini 1.5 Pro)")
+    st.markdown("上傳 12 導程心電圖照片，Google Gemini 將為你辨識潛在的致命性心律不整 (如 STEMI, Afib) 或傳導異常。")
+    st.caption("⚠️ **醫學免責聲明**：AI 判讀僅供輔助參考，絕對不可取代心臟科或急診專科醫師之最終臨床診斷。")
+
+    # API Key 設定區塊
+    with st.expander("🔑 第一步：設定 Gemini API Key (防窺機制)", expanded=True):
+        st.info("💡 **資安與額度提示**：\n此欄位已設定為密碼格式防偷窺。若為護理站共用設備，建議每位使用者輸入「自己的 API Key」以避免佔用單一帳號的免費額度。")
+        api_key_input = st.text_input("請輸入 Google Gemini API Key：", type="password", placeholder="AIzaSy...")
+        st.markdown("*(若尚未取得，請至 [Google AI Studio](https://aistudio.google.com/) 免費申請)*")
+
+    st.subheader("⚙️ 第二步：設定 AI 判讀指令 (急診專屬版 Prompt)")
+    
+    # 載入你提供的專業急診版 Prompt
+    user_prompt_text = """【角色設定】
+你現在是一位具備多年臨床經驗的急診科主治醫師與心臟內科專家，精通 12 導程心電圖（12-lead ECG）判讀，並極度熟稔 ACLS 與急診標準作業流程。
+
+【任務目標】
+我會上傳一張心電圖的照片。請你仔細觀察影像，忽略雜訊與反光。因為第一線臨床人員會在手機上閱讀此報告，請務必嚴格按照以下「結論先行」的結構化格式，輸出繁體中文的判讀報告，字數力求精簡扼要。
+
+【輸出格式要求】
+🚨 【AI 判讀結論】
+直接給出最可能的臨床心電圖診斷（如：Acute Anterolateral STEMI, Wellens' Syndrome, AFib with RVR, Normal ECG 等）。
+若有危及生命之異常，請加上「⚠️ 危險警告：」並簡述可能發生的最壞情況或絕對禁忌症。
+
+⚡ 【立即處置建議】
+條列式給出符合 ACLS 或急診標準流程的「第一優先處置建議」。
+例如：是否需立即啟動心導管室 (Cath Lab)、去顫準備、藥物給予建議 (如 Aspirin, 抗心律不整藥物)、或其他緊急會診與處置。
+
+👀 【關鍵影像特徵】
+列出支持你上述診斷的最核心心電圖變化。
+指出具體導程與特徵（如：V2-V4 ST elevation、深且對稱的 T wave inversion 等）。
+--- (請在此處加入一條分隔線) ---
+📝 【詳細判讀數據】(簡述即可)
+心律與速率: (如：NSR, 約 75 bpm)
+電軸: (正常、左偏、右偏)
+傳導區間: PR interval, QRS duration 是否正常。
+影像品質: 簡述是否有明顯假影影響判讀。"""
+    
+    user_prompt = st.text_area("你設定好的 Prompt (可依單位需求修改)：", value=user_prompt_text, height=350)
+
+    st.subheader("📸 第三步：上傳心電圖照片")
+    uploaded_file = st.file_uploader("請拍攝或選擇心電圖圖片...", type=["jpg", "jpeg", "png"])
+    
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="已載入的心電圖", use_container_width=True)
+        
+        if st.button("🚀 啟動 AI 判讀", type="primary"):
+            if not api_key_input:
+                st.error("❌ 請先在上方展開「第一步」並輸入 Gemini API Key！")
+            else:
+                with st.spinner('🤖 Gemini 大腦正在進行 ACLS 邏輯推理與波形比對，請稍候...'):
+                    try:
+                        genai.configure(api_key=api_key_input)
+                        # 使用能力最強的 gemini-1.5-pro 模型
+                        model = genai.GenerativeModel('gemini-1.5-pro')
+                        response = model.generate_content([user_prompt, image])
+                        
+                        st.success("✅ 判讀完成！")
+                        st.markdown("### 🩺 AI 心電圖急診報告")
+                        st.info(response.text)
+                        
+                    except Exception as e:
+                        st.error(f"❌ 呼叫 AI API 時發生錯誤：{str(e)}")
+                        st.markdown("*(可能原因：API Key 錯誤、額度用盡，或圖片解析度過低)*")
 
 # ==========================================
 # 全域頁尾
@@ -461,7 +511,7 @@ st.divider()
 st.markdown("""
 <div style="text-align: center; color: gray; font-size: 0.85em;">
     <p><strong>© 2026 急診臨床決策輔助系統 (ER Clinical Decision Support)</strong></p>
-    <p>💡 <b>System Design & Clinical Logic by：</b>花蓮慈濟醫學中心 急診護理師 吳智弘 (D-MAT / BLS Instructor)</p>
-    <p>⚠️ <b>免責聲明：</b>本系統基於臨床實證醫學 (EBP) 開發，不可替代臨床醫師之專業診斷。</p>
+    <p>💡 <b>System Design & Clinical Logic by：</b>花蓮慈濟醫學中心 急診護理師 [你的名字] (D-MAT / BLS Instructor)</p>
+    <p>⚠️ <b>免責聲明：</b>本系統基於臨床實證醫學 (EBP) 與 AI 開發，僅供輔助參考，絕對不可替代臨床醫師之最終專業診斷。</p>
 </div>
 """, unsafe_allow_html=True)
