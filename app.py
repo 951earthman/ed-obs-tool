@@ -59,7 +59,7 @@ def parse_his_vitals(raw_text):
     return pd.DataFrame(parsed_data)
 
 # ==========================================
-# 側邊欄 (Sidebar)：導覽、學理搜尋、管理員
+# 側邊欄 (Sidebar)：導覽、學理搜尋、實用連結、管理員
 # ==========================================
 st.sidebar.title("🏥 急診臨床決策輔助系統")
 page = st.sidebar.radio("請選擇功能模組：", [
@@ -72,7 +72,14 @@ page = st.sidebar.radio("請選擇功能模組：", [
 
 st.sidebar.divider()
 
-# --- 學理依據 (EBP) 搜尋系統 ---
+# --- 實用外部連結 (全新加入) ---
+st.sidebar.subheader("🔗 實用快速連結")
+st.sidebar.markdown("💊 [**院內藥物查詢系統**](https://hldrug.tzuchi.com.tw/tchw/IphqryChinese/DesktopModules/WesternMedicine/Pill_Search.aspx?Hospital=HL)", unsafe_allow_html=True)
+st.sidebar.caption("點擊即可另開視窗，查詢藥物外觀與仿單。")
+
+st.sidebar.divider()
+
+# --- 整合後的學理依據 (EBP) 搜尋系統 ---
 st.sidebar.subheader("📚 臨床機轉小寶典 (EBP)")
 st.sidebar.caption("輸入關鍵字，快速複習急診重症生理機轉。")
 search_query = st.sidebar.text_input("🔍 搜尋 (例: 酮體, 鉀, 腦水腫, AKI)", "").strip().lower()
@@ -80,8 +87,6 @@ search_query = st.sidebar.text_input("🔍 搜尋 (例: 酮體, 鉀, 腦水腫, 
 ebp_dict = {
     "預警分數 (MEWS/PEWS) 與休克指數": "MEWS ≥ 5 分 或 SI ≥ 1.0 代表高度休克與惡化風險，列為紅區。PEWS 整合兒童行為、膚色與呼吸費力程度提供早期預警。",
     "高危輸液 (IV Pump) 與假性穩定": "依賴升壓劑維持血壓即代表重度心血管衰竭，無視當下血壓直接列為紅區。降壓劑則列黃區監測。",
-    "潛在不穩定主訴 (高危險特徵)": "癲癇 (Seizure)、消化道出血 (GI Bleeding)、不明原因暈厥等，極易發生突發性呼吸道阻塞或休克，強制歸類為黃區監測。",
-    "危險檢驗值 (Lactate / CRP / K)": "Lactate ≥ 4.0 提示嚴重組織缺氧 (敗血症黃金指標)；CRP ≥ 10.0 提示嚴重感染；K < 3.0 或 > 6.0 易引發致命性心律不整。",
     "鈣離子校正 (Corrected Ca) 與鎂離子 (Mg)": "Albumin < 4.0 會導致假性低血鈣，校正公式：Ca + 0.8×(4.0-Alb)。Mg < 1.5 易引發致命心律不整 (TdP) 及頑固性低血鉀。",
     "肝功能與黃疸 (AST/ALT/Bil)": "AST/ALT > 100 提示實質性肝炎；> 1000 強烈提示猛爆性肝炎或缺血性肝炎 (Shock Liver)。T.Bil > 1.2 或 D.Bil 異常提示膽道阻塞或肝衰竭。",
     "腎臟功能與 BUN/CRE 比例": "BUN/CRE > 20 提示腎前性氮血症 (Prerenal Azotemia)，急診常見於嚴重脫水或急性腸胃道出血 (UGIB)。",
@@ -144,7 +149,7 @@ if page == "📝 留觀風險評估 (交班)":
 
     st.subheader("⚠️ 3. 潛在不穩定主訴與病史")
     high_risk_cc = st.multiselect("➤ 是否有易發生「突發惡化」狀況？", 
-                                  ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", " 嚴重氣喘/COPD", " 嚴重低血糖/酒精戒斷"])
+                                  ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", "🫁 嚴重氣喘/COPD", "☠️ 嚴重低血糖/酒精戒斷"])
 
     st.subheader("🧪 4. 補充檢驗報告")
     col1, col2 = st.columns(2)
@@ -194,10 +199,10 @@ if page == "📝 留觀風險評估 (交班)":
             cc_record_text = " / ".join(high_risk_cc) if has_high_risk_cc else "無"
 
             if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0) or has_vasopressor:
-                risk_level, disposition = "🔴 紅區", "具高度惡化或休克風險，建議收治或轉急救區。"
+                risk_level, disposition = "🔴 紅區", "具高度惡化休克風險，建議收治或轉急救區。"
                 st.error(f"判定：{risk_level}")
             elif total_score >= 3 or has_vasodilator or has_high_risk_cc:
-                risk_level, disposition = "🟡 黃區", "潛在突發惡化風險，請落實防跌、密切監測意識/出血，縮短 Vital signs 頻率。"
+                risk_level, disposition = "🟡 黃區", "潛在突發惡化風險，請落實密切監測並縮短 Vital signs 頻率。"
                 st.warning(f"判定：{risk_level}")
             else:
                 risk_level, disposition = "🟢 綠區", "生命徵象穩定，持續常規留觀。"
@@ -277,7 +282,6 @@ elif page == "🩸 ABG 血液氣體判讀":
 elif page == "💉 血液檢驗報告 (CBC+BCS)":
     st.title("💉 綜合抽血報告快速判讀 (CBC + BCS)")
     blood_input = st.text_area("📋 請貼上抽血報告 (可直接 Ctrl+A 全選貼上)：", height=250)
-    
     if st.button("🔬 綜合解析報告", type="primary") and blood_input.strip() != "":
         wbc = float(re.search(r'WBC\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'WBC\s+([\d.]+)', blood_input, re.IGNORECASE) else None
         hb = float(re.search(r'Hb\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'Hb\s+([\d.]+)', blood_input, re.IGNORECASE) else None
