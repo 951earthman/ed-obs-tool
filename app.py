@@ -61,41 +61,46 @@ def parse_his_vitals(raw_text):
 # ==========================================
 # 側邊欄 (Sidebar)：導覽、學理搜尋、管理員
 # ==========================================
-st.sidebar.title("🏥 急診臨床決策輔助系統")
+st.sidebar.title("🏥 急診超級瑞士刀")
 page = st.sidebar.radio("請選擇功能模組：", [
     "📝 留觀風險評估 (交班)", 
     "📈 生命徵象趨勢 (查房)",
     "🩸 ABG 血液氣體判讀",
     "💉 血液檢驗報告 (CBC+BCS)",
-    "💧 DKA 處置指引 (ADA標準)"
+    "💧 DKA/HHS 動態導航 (ADA標準)"  # <-- 更新名稱
 ])
 
 st.sidebar.divider()
 
-# --- 學理依據 (EBP) 搜尋系統 ---
-st.sidebar.subheader("📚 臨床學理檢索 (EBP)")
-search_query = st.sidebar.text_input("🔍 關鍵字 (如: AKI, 鈣離子, DKA)", placeholder="搜尋學理依據...")
+# --- 整合後的學理依據 (EBP) 搜尋系統 ---
+st.sidebar.subheader("📚 臨床機轉小寶典 (EBP)")
+st.sidebar.caption("輸入關鍵字，快速複習急診重症生理機轉。")
+search_query = st.sidebar.text_input("🔍 搜尋 (例: 酮體, 鉀, 腦水腫, AKI)", "").strip().lower()
 
 ebp_dict = {
-    "預警分數 (MEWS/PEWS) 與 休克指數 (SI)": "MEWS ≥ 5 分 或 SI ≥ 1.0 代表高度休克與惡化風險，列為紅區。PEWS 整合兒童行為、膚色與呼吸費力程度提供早期預警。",
-    "高危輸液 (IV Pump) 與 假性穩定": "依賴升壓劑 (Levophed, Dopamine) 維持血壓即代表重度心血管衰竭，無視當下血壓直接列為紅區。降壓劑則列黃區監測。",
-    "潛在不穩定主訴 (高危險特徵)": "癲癇 (Seizure)、消化道出血 (GI Bleeding)、不明原因暈厥等，極易發生突發性呼吸道阻塞或休克，強制歸類為黃區監測。",
-    "危險檢驗值 (Lactate / CRP / K)": "Lactate ≥ 4.0 提示嚴重組織缺氧 (敗血症黃金指標)；CRP ≥ 10.0 提示嚴重感染；K < 3.0 或 > 6.0 易引發致命性心律不整。",
-    "鈣離子校正 (Corrected Ca) 與 鎂離子 (Mg)": "Albumin < 4.0 會導致假性低血鈣，校正公式：Ca + 0.8×(4.0-Alb)。Mg < 1.5 易引發致命心律不整 (TdP) 及頑固性低血鉀。",
-    "肝功能與黃疸 (AST/ALT/Bil)": "AST/ALT > 1000 強烈提示猛爆性肝炎或缺血性肝炎 (Shock Liver)。T.Bil > 1.2 或 D.Bil 異常提示膽道阻塞或肝衰竭。",
+    "預警分數 (MEWS/PEWS) 與休克指數": "MEWS ≥ 5 分 或 SI ≥ 1.0 代表高度休克與惡化風險，列為紅區。PEWS 整合兒童行為、膚色與呼吸費力程度提供早期預警。",
+    "高危輸液 (IV Pump) 與假性穩定": "依賴升壓劑維持血壓即代表重度心血管衰竭，無視當下血壓直接列為紅區。降壓劑則列黃區監測。",
+    "鈣離子校正與鎂離子 (Mg)": "Albumin < 4.0 會導致假性低血鈣，校正公式：Ca + 0.8×(4.0-Alb)。Mg < 1.5 易引發致命心律不整 (TdP) 及頑固性低血鉀。",
     "腎臟功能與 BUN/CRE 比例": "BUN/CRE > 20 提示腎前性氮血症 (Prerenal Azotemia)，急診常見於嚴重脫水或急性腸胃道出血 (UGIB)。",
-    "DKA Phase 1 (初始急救)": "輸液：NS 15-20 ml/kg/hr。胰島素：IV Pump 滴注 0.1 U/kg/hr。若 K < 3.3 絕對嚴禁開啟 Insulin，需先補鉀。",
-    "DKA Phase 2 (轉換期 BG < 200)": "當血糖降至 200 以下但 DKA 尚未緩解時：輸液改為 D5W + 0.45% NS 預防低血糖。Insulin 速率減半為 0.02-0.05 U/kg/hr，維持血糖 150-200。"
+    "DKA 為什麼會變酸？ (機轉)": "【絕對缺乏胰島素】當體內沒有胰島素時，細胞開始瘋狂分解脂肪。脂肪分解的副產物就是「酮體 (Ketones)」，造成高陰離子間隙代謝性酸中毒。打 Insulin 是為了關閉酮體製造工廠！",
+    "HHS 為什麼會極度脫水？ (機轉)": "【相對缺乏胰島素】微量胰島素足以阻止脂肪分解(無酮體)，但無法降血糖。超高血糖會從腎臟引發強烈的「滲透壓性利尿」，把水分大量排光。HHS 前期大量灌注 N/S 比打 Insulin 更重要！",
+    "致命陷阱：血鉀的捉迷藏 (K+ Shift)": "【抽血鉀很高，卻不能打 Insulin？】嚴重酸血症時身體會把 K+ 趕出細胞到血液中，所以抽血正常或偏高其實是「假象」！打了 Insulin 瞬間把 K+ 掃回細胞內，若原本血鉀就不高 (< 3.3) 會引發致命性心律不整。",
+    "為什麼會有假性低血鈉？ (校正公式)": "【高血糖的稀釋效應】血管極高葡萄糖產生巨大滲透壓，把細胞內水分吸進血管稀釋血鈉。必須用 1.6 或 2.4 的常數去「還原」真實血鈉，決定要給 0.45% 還是 0.9% 點滴。",
+    "防護期：預防腦水腫 (Cerebral Edema)": "【為何 200/300 要加糖水？】高血糖時腦細胞內有滲透壓物質。若 Insulin 把血糖降得太快，血管滲透壓暴跌，水分會瘋狂灌進腦細胞引發腦水腫。所以必須提早踩煞車加 D5W。"
 }
 
+found = False
 for title, content in ebp_dict.items():
-    if search_query == "" or search_query.lower() in title.lower() or search_query.lower() in content.lower():
+    if search_query == "" or search_query in title.lower() or search_query in content.lower():
+        found = True
         with st.sidebar.expander(title, expanded=(search_query != "")):
             st.write(content)
+if not found and search_query != "":
+    st.sidebar.warning("找不到相關內容，請嘗試其他關鍵字！")
 
 st.sidebar.divider()
 
-# --- 隱藏在左下方的管理員系統 ---
+# --- 管理員系統 ---
 st.sidebar.subheader("🔒 管理員後台")
 admin_password = st.sidebar.text_input("輸入密碼解鎖後台", type="password")
 if admin_password == "alex":
@@ -264,22 +269,19 @@ elif page == "🩸 ABG 血液氣體判讀":
             st.code(f"[ABG 判讀]\npH {ph} / pCO2 {pco2} / HCO3 {hco3} / pO2 {po2}\n判讀: {primary} {comp} ({oxy})", language="text")
 
 # ==========================================
-# 模組 4：綜合抽血報告 (含全新 T.Bil, Alb, Ca, Mg)
+# 模組 4：綜合抽血報告 (CBC + BCS)
 # ==========================================
 elif page == "💉 血液檢驗報告 (CBC+BCS)":
     st.title("💉 綜合抽血報告快速判讀 (CBC + BCS)")
-    st.markdown("將 HIS 系統內的**血液常規**與**生化檢驗**一併貼上，系統將自動擷取並加入**鈣離子校正**與**肝膽功能分析**。")
     blood_input = st.text_area("📋 請貼上抽血報告 (可直接 Ctrl+A 全選貼上)：", height=250)
     
     if st.button("🔬 綜合解析報告", type="primary") and blood_input.strip() != "":
-        # CBC 抓取
         wbc = float(re.search(r'WBC\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'WBC\s+([\d.]+)', blood_input, re.IGNORECASE) else None
         hb = float(re.search(r'Hb\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'Hb\s+([\d.]+)', blood_input, re.IGNORECASE) else None
         mcv = float(re.search(r'MCV\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'MCV\s+([\d.]+)', blood_input, re.IGNORECASE) else None
         n_band = float(re.search(r'N\.?band\.?\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'N\.?band\.?\s+([\d.]+)', blood_input, re.IGNORECASE) else 0.0
         n_seg = float(re.search(r'N\.?seg\.?\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'N\.?seg\.?\s+([\d.]+)', blood_input, re.IGNORECASE) else 0.0
         
-        # BCS 基礎抓取
         na = float(re.search(r'Na\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'Na\s+([\d.]+)', blood_input, re.IGNORECASE) else None
         k = float(re.search(r'K\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'K\s+([\d.]+)', blood_input, re.IGNORECASE) else None
         glu = float(re.search(r'GLU\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'GLU\s+([\d.]+)', blood_input, re.IGNORECASE) else None
@@ -290,14 +292,12 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
         ast = float(re.search(r'AST\s*\(?GOT\)?\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'AST\s*\(?GOT\)?\s+([\d.]+)', blood_input, re.IGNORECASE) else None
         alt = float(re.search(r'ALT\s*\(?GPT\)?\s+([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'ALT\s*\(?GPT\)?\s+([\d.]+)', blood_input, re.IGNORECASE) else None
         
-        # 全新 BCS 進階指標抓取 (T.Bil, D.Bil, Albumin, Ca, Mg)
         tbil = float(re.search(r'(?:T[\.\-]?Bil|Total Bilirubin)[^\d\n]*([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'(?:T[\.\-]?Bil|Total Bilirubin)[^\d\n]*([\d.]+)', blood_input, re.IGNORECASE) else None
         dbil = float(re.search(r'(?:D[\.\-]?Bil|Direct Bilirubin)[^\d\n]*([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'(?:D[\.\-]?Bil|Direct Bilirubin)[^\d\n]*([\d.]+)', blood_input, re.IGNORECASE) else None
         alb = float(re.search(r'(?:Alb|Albumin)[^\d\n]*([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'(?:Alb|Albumin)[^\d\n]*([\d.]+)', blood_input, re.IGNORECASE) else None
         ca = float(re.search(r'\b(?:Ca|Calcium)\s*[:=]?\s*([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'\b(?:Ca|Calcium)\s*[:=]?\s*([\d.]+)', blood_input, re.IGNORECASE) else None
         mg = float(re.search(r'\b(?:Mg|Magnesium)\s*[:=]?\s*([\d.]+)', blood_input, re.IGNORECASE).group(1)) if re.search(r'\b(?:Mg|Magnesium)\s*[:=]?\s*([\d.]+)', blood_input, re.IGNORECASE) else None
 
-        # 邏輯判讀
         anc, anc_status = None, "未提供 WBC"
         if wbc:
             anc = round(wbc * 1000 * ((n_band + n_seg) / 100), 1)
@@ -308,18 +308,16 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
         k_status = "🚨 危急值" if k and (k < 3.0 or k > 6.0) else "異常" if k and (k < 3.5 or k > 5.1) else "正常" if k else "未提供"
         bc_ratio = round(bun / cre, 1) if bun and cre else None
         renal_status = "正常"
-        if bc_ratio and bc_ratio > 20: renal_status = f"🔴 腎前性氮血症 (Ratio={bc_ratio} > 20)，提示脫水或 GI Bleeding"
+        if bc_ratio and bc_ratio > 20: renal_status = f"🔴 腎前性氮血症 (Ratio={bc_ratio} > 20)"
         elif cre and cre > 1.3: renal_status = "🟡 腎功能損傷"
         ckd_status = "Stage 1 (≥90)" if egfr and egfr >= 90 else "Stage 2 (60-89)" if egfr and egfr >= 60 else "Stage 3a (45-59)" if egfr and egfr >= 45 else "Stage 3b (30-44)" if egfr and egfr >= 30 else "Stage 4 (15-29)" if egfr and egfr >= 15 else "Stage 5 (<15)" if egfr else "未提供"
-        liver_status = "🚨 猛爆性/缺血性肝損傷 (>1000)" if ast and alt and (ast > 1000 or alt > 1000) else "🟡 肝炎 / 肝異常" if ast and alt and (ast > 100 or alt > 100) else "正常"
+        liver_status = "🚨 猛爆性肝損傷 (>1000)" if ast and alt and (ast > 1000 or alt > 1000) else "🟡 肝炎" if ast and alt and (ast > 100 or alt > 100) else "正常"
         
-        # 鈣離子校正 (Corrected Calcium)
-        corr_ca = None
-        if ca and alb: corr_ca = round(ca + 0.8 * (4.0 - alb), 2)
+        corr_ca = round(ca + 0.8 * (4.0 - alb), 2) if ca and alb else None
         ca_display = corr_ca if corr_ca else ca
         ca_status = "🚨 危急值" if ca_display and (ca_display < 6.5 or ca_display > 13.0) else "異常" if ca_display and (ca_display < 8.5 or ca_display > 10.5) else "正常"
         mg_status = "異常" if mg and (mg < 1.5 or mg > 2.5) else "正常"
-        bil_status = "異常 (黃疸/膽道阻塞)" if tbil and tbil > 1.2 else "正常"
+        bil_status = "異常" if tbil and tbil > 1.2 else "正常"
 
         st.markdown("### 🧫 血液常規 (CBC & DC)")
         c1, c2, c3, c4 = st.columns(4)
@@ -341,84 +339,119 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
         if mg: a4.metric("Mg", mg, mg_status, delta_color="inverse" if mg_status != "正常" else "normal")
         
         if bc_ratio and bc_ratio > 20: st.error(f"**💧 體液與腎臟：** {renal_status}")
-        elif bun and cre: st.info(f"**💧 體液與腎臟：** BUN/CRE Ratio {bc_ratio}")
         if ast and (ast > 100 or alt > 100): st.warning(f"**🩸 肝臟功能：** {liver_status}")
-        if corr_ca and corr_ca != ca: st.info(f"**🦴 鈣離子校正：** 因 Albumin 為 {alb}，測量鈣 {ca} 經校正後實際血鈣為 **{corr_ca}**。")
+        if corr_ca and corr_ca != ca: st.info(f"**🦴 鈣離子校正：** 因 Albumin 為 {alb}，測量鈣 {ca} 經校正後為 **{corr_ca}**。")
         
-        st.code(f"""[抽血檢驗判讀]
-1. 免疫：ANC {anc} / 貧血：Hb {hb} ({anemia_status})
-2. 腎臟：BUN/CRE {bc_ratio} ({renal_status}) / CKD: {ckd_status.split(' ')[0]}
-3. 肝膽：AST {ast} / ALT {alt} ({liver_status.split(' ')[0]}) / T.Bil {tbil} / D.Bil {dbil} / Alb {alb}
-4. 電解質：Na {na} / K {k} / Ca(校正) {ca_display} / Mg {mg}""", language="text")
+        st.code(f"[抽血檢驗判讀]\n1. 免疫：ANC {anc} / 貧血：Hb {hb} ({anemia_status})\n2. 腎臟：BUN/CRE {bc_ratio} ({renal_status}) / CKD: {ckd_status.split(' ')[0]}\n3. 肝膽：AST {ast} / ALT {alt} ({liver_status.split(' ')[0]})\n4. 電解質：Na {na} / K {k} / Ca(校正) {ca_display} / Mg {mg}", language="text")
 
 # ==========================================
-# 模組 5：DKA 處置指引 (加入 Phase 1/Phase 2)
+# 模組 5：ADA 標準 DKA/HHS 動態導航系統
 # ==========================================
-elif page == "💧 DKA 處置指引 (ADA標準)":
-    st.title("💧 DKA 處置指引與幫浦計算 (ADA Protocol)")
-    st.markdown("依據美國糖尿病學會 (ADA) 治療指引，協助快速計算 DKA **兩大階段**之輸液、胰島素與電解質校正劑量。")
-    
-    # 選擇 DKA 階段 (Phase 1 vs Phase 2)
-    phase = st.radio("🔄 請選擇病患目前的治療階段：", ["**Phase 1**：初始急救期 (血糖 > 200 mg/dL)", "**Phase 2**：轉換過渡期 (血糖 ≤ 200 mg/dL 但酮酸中毒尚未緩解)"], horizontal=True)
-    st.divider()
+elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
+    st.title("🚨 ADA 標準 DKA/HHS 動態導航系統")
+    st.markdown("**基於美國糖尿病學會 (ADA) 高血糖危機處置指引，內建滲透壓與動態血鉀防護**")
+    st.caption("配方預設：Regular Insulin 100U + 0.9% N/S 100mL (1 U/mL = 1 mL/hr = 1 U/hr)")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        weight = st.number_input("⚖️ 病患體重 (kg)", min_value=10.0, max_value=200.0, value=60.0, step=1.0)
-    with col2:
-        k_val = st.number_input("🧪 鉀離子 K (mEq/L)", min_value=1.0, max_value=10.0, value=4.0, step=0.1)
-        ph_val = st.number_input("🫧 血液 pH 值", min_value=6.0, max_value=7.6, value=7.1, step=0.01)
+    disease_type = st.radio("👉 請選擇病患的疾病型態：", ["DKA (糖尿病酮酸血症) - 轉換點 200", "HHS (高滲透壓高血糖狀態) - 轉換點 300"], horizontal=True)
 
-    if st.button("🚀 計算 ADA 處置建議", type="primary"):
-        fluid_rate_min, fluid_rate_max = int(15 * weight), int(20 * weight)
-        
-        # Phase 1 邏輯
-        if "Phase 1" in phase:
-            fluid_suggestion = f"初始給予 **0.9% NaCl (Normal Saline)**，流速約 **{fluid_rate_min} - {fluid_rate_max} mL/hr**。"
-            insulin_rate = round(0.1 * weight, 1)
-            insulin_suggestion = f"靜脈滴注 (IV Pump) **Regular Insulin (RI)**，速率為 **{insulin_rate} U/hr** (0.1 U/kg/hr)。目標血糖下降 50-70 mg/dL/hr。"
-        
-        # Phase 2 邏輯 (全新加入)
-        else:
-            fluid_suggestion = "⚠️ **轉換期**：將輸液更改為含葡萄糖之溶液 (如 **D5W + 0.45% NaCl**)，流速約 **150 - 250 mL/hr**，以預防低血糖並持續清除酮體。"
-            insulin_rate_min = round(0.02 * weight, 1)
-            insulin_rate_max = round(0.05 * weight, 1)
-            insulin_suggestion = f"減少靜脈滴注速率至 **{insulin_rate_min} - {insulin_rate_max} U/hr** (0.02-0.05 U/kg/hr)。目標維持血糖在 **150-200 mg/dL**，直到 DKA 完全緩解 (AG≤12, HCO3≥15)。"
+    tab1, tab2 = st.tabs(["Phase 1: 初始評估與給藥 (Initial)", "Phase 2: 動態滴定與轉換 (Titration)"])
 
-        # 鉀離子與 Insulin 聯鎖防呆機制
-        insulin_hold = False
-        if k_val < 3.3:
-            insulin_hold = True
-            k_suggestion = "🚨 **K < 3.3 mEq/L：暫停給予 Insulin！** 請先以 20-30 mEq/hr 速率靜脈補鉀，直到 K > 3.3 才可啟動胰島素。"
-            insulin_suggestion = "🛑 **因血鉀過低，絕對嚴禁開啟 Insulin Pump！** (以免引發致命性心律不整)"
-        elif 3.3 <= k_val <= 5.2:
-            k_suggestion = "🟡 **K 正常偏低 (3.3 - 5.2)**：請在每公升輸液中加入 **20 - 30 mEq 的鉀離子**，維持 K 在 4.0 - 5.0 之間。"
-        else:
-            k_suggestion = "🟢 **K > 5.2 mEq/L**：目前暫 **不需** 補充鉀離子，請每 2 小時追蹤一次血鉀。"
+    with tab1:
+        st.header("Phase 1: 初始給藥與輸液評估")
+        col1, col2 = st.columns(2)
+        with col1:
+            weight_p1 = st.number_input("病患體重 (kg)", min_value=30.0, max_value=200.0, value=60.0, step=1.0, key="w1")
+            init_gluc = st.number_input("初始血糖 (mg/dL)", min_value=50, max_value=2000, value=450, step=10, key="g1")
+            ph_val = st.number_input("動脈/靜脈 pH 值", min_value=6.0, max_value=7.5, value=7.1, step=0.01, key="ph1")
+        with col2:
+            init_k = st.number_input("初始血鉀 K+ (mEq/L)", min_value=1.0, max_value=10.0, value=4.0, step=0.1, key="k1")
+            init_na = st.number_input("測量血鈉 Na+ (mEq/L)", min_value=100, max_value=200, value=135, step=1, key="na1")
 
-        # 碳酸氫鈉 (Bicarbonate)
-        if ph_val < 6.9: bicarb_suggestion = "🔴 **pH < 6.9**：建議將 100 mmol Bicarbonate 加入 400 mL 蒸餾水以 200 mL/hr 滴注。"
-        else: bicarb_suggestion = "🟢 **pH ≥ 6.9**：依據 ADA 指引，不建議常規給予 Bicarbonate。"
+        if st.button("計算 ADA 初始醫囑", type="primary", key="btn1"):
+            st.divider()
+            st.subheader("🧠 0. 有效血液滲透壓 (Effective Osmolality)")
+            eff_osmo = (2 * init_na) + (init_gluc / 18)
+            st.markdown(f"系統依據 (2 × Na + Glucose/18) 計算，有效滲透壓為：**{eff_osmo:.1f} mOsm/kg**")
+            if eff_osmo > 320: st.error("🚨 **診斷提示：滲透壓 > 320 mOsm/kg！**\n\n此為典型 HHS 超高滲透壓狀態，前期需極度積極補充水分。")
+            else: st.info("💡 滲透壓 ≤ 320 mOsm/kg。若病患有嚴重意識不清，請同步排除其他非高血糖神經學因素。")
 
-        # 顯示結果
-        st.markdown(f"### 🏥 醫師醫囑核對與護理執行建議 ({phase.split('：')[0]})")
-        st.info(f"**💧 輸液 (Fluids)：**\n{fluid_suggestion}")
-        if insulin_hold:
-            st.error(f"**🧪 鉀離子 (Potassium)：**\n{k_suggestion}")
-            st.error(f"**💉 胰島素 (Insulin)：**\n{insulin_suggestion}")
-        else:
-            st.warning(f"**🧪 鉀離子 (Potassium)：**\n{k_suggestion}")
-            st.success(f"**💉 胰島素 (Insulin)：**\n{insulin_suggestion}")
+            st.subheader("💧 1. 初始液體復甦 (第一小時)")
+            st.info("優先給予 **0.9% NaCl** 1000 - 1500 mL/hr 快速滴注。*(心腎衰竭請醫師重新評估)*")
+
+            st.subheader("🛑 2. 血鉀檢核 (Potassium Check)")
+            if init_k < 3.3: st.error(f"**絕對禁忌：血鉀 {init_k} < 3.3 mEq/L！**\n\n**HOLD INSULIN (禁止啟動胰島素)！**\n請先由靜脈補充 KCl 20-30 mEq/hr，直到 K+ ≥ 3.3。")
+            elif 3.3 <= init_k <= 5.3: st.success(f"**血鉀 {init_k} mEq/L：安全範圍。**\n\n允許啟動 Insulin。於每公升點滴中加入 **20-30 mEq KCl** (目標維持血鉀 4-5)。")
+            else: st.warning(f"**血鉀 {init_k} mEq/L：偏高。**\n\n允許啟動 Insulin。點滴**暫不加鉀**，請嚴密追蹤。")
+
+            st.subheader("🧪 3. 校正血鈉與維持輸液 (第二小時起)")
+            factor_used = 1.6 if init_gluc <= 400 else 2.4
+            corr_na = init_na + factor_used * ((init_gluc - 100) / 100)
+            st.markdown(f"系統採用 **{factor_used}** 係數計算，校正血鈉為：**{corr_na:.1f} mEq/L**")
+            if corr_na >= 135: st.warning("👉 處置：維持點滴改掛 **0.45% NaCl** (250-500 mL/hr)，以補充游離水。")
+            else: st.success("👉 處置：維持點滴續掛 **0.9% NaCl** (250-500 mL/hr)。")
+
+            st.subheader("💉 4. 胰島素初始給藥")
+            if init_k >= 3.3: st.info(f"**ADA 建議：**\n* **作法 A**：IV Bolus **{(weight_p1 * 0.1):.1f} U**，隨後 Pump 設定 **{(weight_p1 * 0.1):.1f} mL/hr**。\n* **作法 B**：無 Bolus，直接設定 Pump **{(weight_p1 * 0.14):.1f} mL/hr**。")
+
+            st.subheader("🩺 5. 酸鹼平衡 (Bicarbonate)")
+            if ph_val < 6.9: st.error(f"**pH {ph_val} < 6.9：極度酸血症！**\n建議給予 100 mmol NaHCO3 滴注。")
+            else: st.success(f"**pH {ph_val} ≥ 6.9**：不建議常規給予碳酸氫鈉。")
+
+    with tab2:
+        st.header("Phase 2: Pump 動態滴數調整 (Q1H/Q2H)")
+        col3, col4 = st.columns(2)
+        with col3:
+            weight_p2 = st.number_input("病患體重 (kg)", min_value=30.0, max_value=200.0, value=60.0, step=1.0, key="w2")
+            old_gluc = st.number_input("前次血糖 (mg/dL)", min_value=20, max_value=1500, value=300, step=10, key="g2_old")
+        with col4:
+            new_gluc = st.number_input("最新血糖 (mg/dL)", min_value=20, max_value=1500, value=250, step=10, key="g2_new")
+            current_rate = st.number_input("目前 Pump 速率 (mL/hr)", min_value=0.0, max_value=50.0, value=6.0, step=0.5, key="r2")
+
+        st.markdown("---")
+        has_new_k = st.checkbox("有 4 小時內的最新血鉀 (K+) 報告", value=False)
+        new_k = None
+        if has_new_k: new_k = st.number_input("輸入最新血鉀 K+ (mEq/L)", min_value=1.0, max_value=10.0, value=4.0, step=0.1, key="k2")
+
+        if st.button("計算 ADA 最新滴數", type="primary", key="btn2"):
+            st.divider()
             
-        st.success(f"**🫧 酸鹼平衡 (Bicarbonate)：**\n{bicarb_suggestion}")
-        
-        st.subheader("📋 DKA 處置交班紀錄")
-        st.code(f"""[{phase.split('：')[0]} ADA Protocol 執行紀錄]
-1. 參數：體重 {weight} kg / K {k_val} / pH {ph_val}
-2. 輸液計畫：{fluid_suggestion.replace('*','')}
-3. 鉀離子校正：{k_suggestion.replace('*','')}
-4. 胰島素設定：{insulin_suggestion.replace('*','')}
-5. Bicarbonate：{bicarb_suggestion.replace('*','')}""", language="text")
+            if has_new_k and new_k < 3.3:
+                st.error(f"🛑 **動態血鉀攔截：最新血鉀 {new_k} < 3.3 mEq/L！**\n\n**必須立刻關閉 Insulin Pump！**\n請先靜脈補充 KCl，待 K+ ≥ 3.3 後再重新啟動。")
+                st.stop()
+            elif has_new_k and new_k > 5.3: st.warning(f"⚠️ **最新血鉀 {new_k} > 5.3 mEq/L**：請確認已停止加入 KCl。")
+            elif has_new_k: st.success(f"✅ **最新血鉀 {new_k} mEq/L (安全)**：確認點滴中持續加入 KCl。")
+            else: st.info("🔔 **安全提醒**：未輸入最新血鉀，請確認已安排 Q2-Q4H 追蹤。")
+
+            st.markdown("---")
+            target_threshold = 200 if "DKA" in disease_type else 300
+            target_range = "150-200" if "DKA" in disease_type else "200-300"
+            drop = old_gluc - new_gluc
+            
+            if new_gluc < 70:
+                st.error("🆘 **嚴重低血糖 (< 70 mg/dL)！**\n立刻關閉 Insulin Pump！給予 D50W 推注，並改為 Q15min 密切監測。")
+            elif new_gluc <= target_threshold:
+                min_rate = max(0.5, weight_p2 * 0.02)
+                half_rate = max(min_rate, current_rate / 2)
+                st.error(f"🚨 **ADA 關鍵防護期**：{disease_type} 血糖已達 {new_gluc} mg/dL！\n必須**立刻同時**執行以下兩項：")
+                st.warning("1. **加糖**：維持點滴立即加入 5% 葡萄糖 (改為 **D5W + 0.45% NaCl**)。")
+                st.warning(f"2. **降速**：建議直接將原速率減半為 **{half_rate:.1f} mL/hr** (鎖定最低底線 {min_rate:.1f})。")
+                st.info(f"🎯 **後續 ADA 目標**：將血糖穩定鎖定在 **{target_range} mg/dL** 之間，直到酸中毒解除。")
+            else:
+                st.write(f"過去期間血糖降幅：**{drop:.0f} mg/dL**")
+                if (new_gluc <= target_threshold + 50) and (drop > 75):
+                    st.warning(f"⚠️ **邊界趨勢預警**：極可能即將跌破防護線 ({target_threshold})，請預先準備含糖輸液 (D5W)。")
+
+                if drop < 50:
+                    doubled_rate = current_rate * 2
+                    if doubled_rate > 15.0: st.error(f"🛑 **滴數已達安全上限 ({doubled_rate:.1f} mL/hr)！**\n請強烈懷疑 **IV 管路漏針 (Infiltration)** 或阻塞！")
+                    else: st.warning(f"📉 **降幅 < 50 mg/dL (降太慢)**：\nADA 建議將連續輸注速率**加倍 (Double)**。\n👉 建議新滴數：**{doubled_rate:.1f} mL/hr**")
+                elif 50 <= drop <= 75:
+                    st.success(f"✨ **降幅 50-75 mg/dL (完美達標)**：\n👉 維持原速率不動。\n🎯 **維持滴數：{current_rate:.1f} mL/hr**")
+                else:
+                    adjust = weight_p2 * 0.05
+                    min_allowed = max(0.5, weight_p2 * 0.02)
+                    new_rate = max(min_allowed, current_rate - adjust)
+                    st.warning(f"📉 **降幅 > 75 mg/dL (降太快)**：\n建議適度調降 Pump 速率。\n👉 建議新滴數：**{new_rate:.1f} mL/hr**")
 
 # ==========================================
 # 全域頁尾
@@ -428,7 +461,7 @@ st.divider()
 st.markdown("""
 <div style="text-align: center; color: gray; font-size: 0.85em;">
     <p><strong>© 2026 急診臨床決策輔助系統 (ER Clinical Decision Support)</strong></p>
-    <p>💡 <b>System Design & Clinical Logic by：</b>花蓮慈濟醫學中心 急診護理師 [吳智弘] (D-MAT / BLS Instructor)</p>
+    <p>💡 <b>System Design & Clinical Logic by：</b>花蓮慈濟醫學中心 急診護理師 吳智弘 (D-MAT / BLS Instructor)</p>
     <p>⚠️ <b>免責聲明：</b>本系統基於臨床實證醫學 (EBP) 開發，不可替代臨床醫師之專業診斷。</p>
 </div>
 """, unsafe_allow_html=True)
