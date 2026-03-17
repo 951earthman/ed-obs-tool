@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+import urllib.parse  # <-- 全新加入：用來轉換網址以生成 QR Code
 from datetime import datetime
 import os
 
@@ -59,7 +60,7 @@ def parse_his_vitals(raw_text):
     return pd.DataFrame(parsed_data)
 
 # ==========================================
-# 側邊欄 (Sidebar)：導覽、學理搜尋、實用連結、管理員
+# 側邊欄 (Sidebar)：導覽、衛教 QR、學理搜尋
 # ==========================================
 st.sidebar.title("🏥 急診臨床決策輔助系統")
 page = st.sidebar.radio("請選擇功能模組：", [
@@ -72,16 +73,39 @@ page = st.sidebar.radio("請選擇功能模組：", [
 
 st.sidebar.divider()
 
-# --- 實用外部連結 (全新加入) ---
-st.sidebar.subheader("🔗 實用快速連結")
-st.sidebar.markdown("💊 [**院內藥物查詢系統**](https://hldrug.tzuchi.com.tw/tchw/IphqryChinese/DesktopModules/WesternMedicine/Pill_Search.aspx?Hospital=HL)", unsafe_allow_html=True)
-st.sidebar.caption("點擊即可另開視窗，查詢藥物外觀與仿單。")
+# --- 全新功能：出院/留觀飲食衛教 (QR Code 生成) ---
+st.sidebar.subheader("🍽️ 家屬飲食衛教 (QR Code)")
+st.sidebar.caption("選擇主題，讓家屬直接用手機掃描帶走！")
+edu_topic = st.sidebar.selectbox("選擇衛教主題：", ["-- 請選擇 --", "🩸 糖尿病飲食 (DM)", "💧 腎臟病飲食 (CKD)", "🍷 肝臟疾病飲食", "🩸 腸胃道出血後飲食"])
+
+if edu_topic != "-- 請選擇 --":
+    qr_url = ""
+    if edu_topic == "🩸 糖尿病飲食 (DM)":
+        st.sidebar.info("1. 規律進食，避免空腹過久。\n2. 拒絕含糖飲料與精緻甜點。\n3. 多吃高纖蔬菜延緩血糖上升。")
+        qr_url = "https://www.hpa.gov.tw/Pages/EBook.aspx?nodeid=1208" # 國健署糖尿病衛教手冊
+    elif edu_topic == "💧 腎臟病飲食 (CKD)":
+        st.sidebar.info("1. 嚴格避免高鉀食物 (如香蕉、濃湯、奇異果)。\n2. 避免高磷食物 (如堅果、內臟、加工肉品)。\n3. 依醫囑限制水分與鹽分攝取。")
+        qr_url = "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=54&pid=11255" # 國健署腎臟病衛教
+    elif edu_topic == "🍷 肝臟疾病飲食":
+        st.sidebar.info("1. 絕對禁酒！\n2. 若有腹水，嚴格限制鹽分(低鈉)。\n3. 避免攝取生食(如生蠔、生魚片)防海洋弧菌感染。")
+        qr_url = "https://www.mohw.gov.tw/cp-4252-48731-1.html" # 衛福部肝病護理
+    elif edu_topic == "🩸 腸胃道出血後飲食":
+        st.sidebar.info("1. 醫師許可進食後，先喝溫冷水測試。\n2. 前三天採「溫冷流質」或「溫冷軟食」。\n3. 絕對禁止辛辣、熱湯、咖啡及酒精。")
+        qr_url = "https://www.google.com/search?q=%E8%85%B8%E8%83%83%E9%81%93%E5%87%BA%E8%A1%80+%E9%A3%B2%E9%A3%9F+%E8%A1%9B%E6%95%99" # Google 搜尋捷徑
+    
+    if qr_url:
+        # 呼叫免費 QR Code API 產生圖片，零安裝套件！
+        encoded_url = urllib.parse.quote(qr_url)
+        st.sidebar.image(f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={encoded_url}", caption=f"📱 掃描查看【{edu_topic}】詳細指南")
 
 st.sidebar.divider()
 
-# --- 整合後的學理依據 (EBP) 搜尋系統 ---
+st.sidebar.subheader("🔗 實用快速連結")
+st.sidebar.markdown("💊 [**院內藥物查詢系統**](https://hldrug.tzuchi.com.tw/tchw/IphqryChinese/DesktopModules/WesternMedicine/Pill_Search.aspx?Hospital=HL)", unsafe_allow_html=True)
+
+st.sidebar.divider()
+
 st.sidebar.subheader("📚 臨床機轉小寶典 (EBP)")
-st.sidebar.caption("輸入關鍵字，快速複習急診重症生理機轉。")
 search_query = st.sidebar.text_input("🔍 搜尋 (例: 酮體, 鉀, 腦水腫, AKI)", "").strip().lower()
 
 ebp_dict = {
@@ -96,36 +120,26 @@ ebp_dict = {
     "為什麼會有假性低血鈉？ (校正公式)": "【高血糖的稀釋效應】血管極高葡萄糖產生巨大滲透壓，把細胞內水分吸進血管稀釋血鈉。必須用 1.6 或 2.4 的常數去「還原」真實血鈉，決定要給 0.45% 還是 0.9% 點滴。",
     "防護期：預防腦水腫 (Cerebral Edema)": "【為何 200/300 要加糖水？】高血糖時腦細胞內有滲透壓物質。若 Insulin 把血糖降得太快，血管滲透壓暴跌，水分會瘋狂灌進腦細胞引發腦水腫。所以必須提早踩煞車加 D5W。"
 }
-
 found = False
 for title, content in ebp_dict.items():
     if search_query == "" or search_query in title.lower() or search_query in content.lower():
         found = True
         with st.sidebar.expander(title, expanded=(search_query != "")):
             st.write(content)
-if not found and search_query != "":
-    st.sidebar.warning("找不到相關內容，請嘗試其他關鍵字！")
 
 st.sidebar.divider()
-
-# --- 管理員系統 ---
 st.sidebar.subheader("🔒 管理員後台")
 admin_password = st.sidebar.text_input("輸入密碼解鎖後台", type="password")
 if admin_password == "alex":
     st.sidebar.success("✅ 身分驗證成功")
     if os.path.exists(LOG_FILE):
         df_log = pd.read_csv(LOG_FILE)
-        st.sidebar.caption(f"目前累積 {len(df_log)} 筆紀錄")
         st.sidebar.download_button("📥 下載完整紀錄", data=df_log.to_csv(index=False, encoding='utf-8-sig'), file_name="ed_obs_log.csv", mime="text/csv", use_container_width=True)
         if st.sidebar.button("🗑️ 清空所有紀錄", use_container_width=True):
             os.remove(LOG_FILE); st.rerun()
-    else:
-        st.sidebar.info("尚無任何紀錄。")
-elif admin_password != "":
-    st.sidebar.error("❌ 密碼錯誤")
 
 # ==========================================
-# 模組 1：留觀單次評估與交班
+# 模組 1：留觀單次評估與交班 (含自動飲食防呆)
 # ==========================================
 if page == "📝 留觀風險評估 (交班)":
     st.title("🚨 急診留觀風險自動評估與交班")
@@ -137,6 +151,7 @@ if page == "📝 留觀風險評估 (交班)":
         gcs_input = st.number_input("🧠 意識狀態 (GCS 分數) ⚠️必填", min_value=3, max_value=15, value=None, step=1)
         log_score_name = "MEWS"
     else:
+        gcs_input = 15 # 兒科預設
         age_group = st.selectbox("👶 選擇病童年齡區間：", ["0-3個月", "4-11個月", "1-4歲", "5-11歲", "12歲以上"])
         col_p1, col_p2, col_p3 = st.columns(3)
         with col_p1: pews_behavior = st.radio("行為狀態", ["正常(0分)", "焦躁/嗜睡(1分)", "對痛無反應(2分)"])
@@ -198,6 +213,15 @@ if page == "📝 留觀風險評估 (交班)":
             has_high_risk_cc = len(high_risk_cc) > 0
             cc_record_text = " / ".join(high_risk_cc) if has_high_risk_cc else "無"
 
+            # --- 全新加入：自動飲食防呆邏輯 ---
+            diet_warning = "🟢 飲食建議：普通飲食 (Normal Diet) 或依醫囑。"
+            if gcs_input is not None and gcs_input <= 12:
+                diet_warning = "🛑 飲食建議：絕對 NPO (禁食)！意識不清，極易發生吸入性肺炎。"
+            elif has_high_risk_cc and any("GI Bleeding" in cc for cc in high_risk_cc):
+                diet_warning = "🛑 飲食建議：絕對 NPO (禁食)！疑似腸胃道出血，請保留內視鏡或手術空腹時間。"
+            elif has_high_risk_cc and any("氣喘" in cc or "癲癇" in cc for cc in high_risk_cc):
+                diet_warning = "⚠️ 飲食建議：暫時 NPO 或視情況給予流質，預防突發惡化嗆咳。"
+
             if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0) or has_vasopressor:
                 risk_level, disposition = "🔴 紅區", "具高度惡化休克風險，建議收治或轉急救區。"
                 st.error(f"判定：{risk_level}")
@@ -214,7 +238,8 @@ if page == "📝 留觀風險評估 (交班)":
 3. 預警：{score_display} / SI {shock_index}
 4. 輸液/風險：{pump_record_text} / {cc_record_text}
 5. 檢驗：{lab_record_text}
-6. 判定/處置：{risk_level} - {disposition}""", language="text")
+6. 判定/處置：{risk_level} - {disposition}
+7. 飲食動向：{diet_warning}""", language="text")
 
             new_record = pd.DataFrame([{
                 "評估時間": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -277,7 +302,7 @@ elif page == "🩸 ABG 血液氣體判讀":
             st.code(f"[ABG 判讀]\npH {ph} / pCO2 {pco2} / HCO3 {hco3} / pO2 {po2}\n判讀: {primary} {comp} ({oxy})", language="text")
 
 # ==========================================
-# 模組 4：綜合抽血報告 (CBC + BCS)
+# 模組 4：綜合抽血報告 (含自動飲食防呆)
 # ==========================================
 elif page == "💉 血液檢驗報告 (CBC+BCS)":
     st.title("💉 綜合抽血報告快速判讀 (CBC + BCS)")
@@ -326,6 +351,15 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
         mg_status = "異常" if mg and (mg < 1.5 or mg > 2.5) else "正常"
         bil_status = "異常" if tbil and tbil > 1.2 else "正常"
 
+        # --- 全新加入：依據抽血報告的自動飲食防呆 ---
+        diet_warning = "🟢 飲食無特殊禁忌"
+        if (k and k > 5.1) or (egfr and egfr < 45):
+            diet_warning = "⚠️ 飲食禁忌：嚴格限鉀、限磷，並依醫囑注意水份控制 (Renal Diet)。"
+        elif glu and glu > 250:
+            diet_warning = "⚠️ 飲食禁忌：糖尿病飲食 (DM Diet)，避免精緻糖及過量澱粉。"
+        elif ast and ast > 500:
+            diet_warning = "⚠️ 飲食禁忌：肝炎狀態，避免高脂、加工食品，若有腹水需嚴格限鈉。"
+
         st.markdown("### 🧫 血液常規 (CBC & DC)")
         c1, c2, c3, c4 = st.columns(4)
         if wbc: c1.metric("WBC", wbc); c2.metric("ANC", anc, anc_status.split(" ")[1] if anc < 1500 else "正常", delta_color="inverse" if anc < 1500 else "normal")
@@ -349,7 +383,11 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
         if ast and (ast > 100 or alt > 100): st.warning(f"**🩸 肝臟功能：** {liver_status}")
         if corr_ca and corr_ca != ca: st.info(f"**🦴 鈣離子校正：** 因 Albumin 為 {alb}，測量鈣 {ca} 經校正後為 **{corr_ca}**。")
         
-        st.code(f"[抽血檢驗判讀]\n1. 免疫：ANC {anc} / 貧血：Hb {hb} ({anemia_status})\n2. 腎臟：BUN/CRE {bc_ratio} ({renal_status}) / CKD: {ckd_status.split(' ')[0]}\n3. 肝膽：AST {ast} / ALT {alt} ({liver_status.split(' ')[0]})\n4. 電解質：Na {na} / K {k} / Ca(校正) {ca_display} / Mg {mg}", language="text")
+        st.code(f"""[抽血檢驗判讀]
+1. 免疫：ANC {anc} / 貧血：Hb {hb} ({anemia_status})
+2. 腎臟：BUN/CRE {bc_ratio} ({renal_status}) / CKD: {ckd_status.split(' ')[0]}
+3. 肝膽：AST {ast} / ALT {alt} ({liver_status.split(' ')[0]})\n4. 電解質：Na {na} / K {k} / Ca(校正) {ca_display} / Mg {mg}
+5. 飲食衛教：{diet_warning}""", language="text")
 
 # ==========================================
 # 模組 5：ADA 標準 DKA/HHS 動態導航系統
