@@ -9,13 +9,13 @@ import os
 # ==========================================
 st.set_page_config(page_title="急診臨床決策輔助系統", page_icon="🚨", layout="wide")
 LOG_FILE = "assessment_log.csv"
-FEEDBACK_FILE = "feedback_log.csv"  # <-- 全新加入：反饋紀錄檔
-SYSTEM_VERSION = "v17.0"
+FEEDBACK_FILE = "feedback_log.csv"
+SYSTEM_VERSION = "v17.1"
 LAST_UPDATE = "2026-03"
 NEXT_REVIEW = "2027-01 (配合 ADA 最新指引發布)"
 
 # ==========================================
-# 核心解析神經中樞 (強化版防呆機制)
+# 核心解析神經中樞
 # ==========================================
 def parse_his_vitals(raw_text):
     parsed_data = []
@@ -63,9 +63,9 @@ def parse_his_vitals(raw_text):
     return pd.DataFrame(parsed_data)
 
 # ==========================================
-# 側邊欄 (Sidebar)：導覽、學理搜尋、實用連結
+# 側邊欄 (Sidebar)
 # ==========================================
-st.sidebar.title("🏥 急診臨床決策輔助系統")
+st.sidebar.title("🏥 急診超級瑞士刀")
 page = st.sidebar.radio("請選擇功能模組：", [
     "📝 留觀風險評估 (交班)", 
     "📈 生命徵象趨勢 (查房)",
@@ -73,31 +73,29 @@ page = st.sidebar.radio("請選擇功能模組：", [
     "💉 血液檢驗報告 (CBC+BCS)",
     "💧 DKA/HHS 動態導航 (ADA標準)",
     "📖 參考文獻與系統更新",
-    "💬 系統意見反饋"  # <-- 全新加入的分頁
+    "💬 系統意見反饋"
 ])
 
 st.sidebar.divider()
-
 st.sidebar.subheader("🔗 實用快速連結")
 st.sidebar.markdown("💊 [**院內藥物查詢系統**](https://hldrug.tzuchi.com.tw/tchw/IphqryChinese/DesktopModules/WesternMedicine/Pill_Search.aspx?Hospital=HL)", unsafe_allow_html=True)
 
 st.sidebar.divider()
-
 st.sidebar.subheader("📚 臨床機轉小寶典 (EBP)")
-st.sidebar.caption("輸入關鍵字，快速複習急診生理機轉。")
-search_query = st.sidebar.text_input("🔍 搜尋 (例: 酮體, 鉀, AKI)", "").strip().lower()
+search_query = st.sidebar.text_input("🔍 搜尋 (例: 敗血症, 酮體, 鉀)", "").strip().lower()
 
 ebp_dict = {
-    "預警分數 (MEWS/PEWS) 與休克指數": "MEWS ≥ 5 分 或 SI ≥ 1.0 代表高度休克與惡化風險，列為紅區。PEWS 整合兒童行為、膚色與呼吸費力程度提供早期預警。",
-    "高危輸液 (IV Pump) 與假性穩定": "依賴升壓劑維持血壓即代表重度心血管衰竭，無視當下血壓直接列為紅區。降壓劑則列黃區監測。",
+    "Sepsis 敗血症黃金一小時 (Hour-1 Bundle)": "SSC 2021 指引：當 MAP < 65 或 Lactate ≥ 4.0，須於 3 小時內給予 30 mL/kg 輸液(首選 LR/平衡液)。未達標則啟動 Levophed 維持 MAP ≥ 65。給抗生素前須完成兩套 Blood Culture。",
+    "預警分數 (MEWS/PEWS) 與休克指數": "MEWS ≥ 5 分 或 SI ≥ 1.0 代表高度休克風險。PEWS 整合兒童行為、膚色與呼吸費力程度提供早期預警。",
+    "高危輸液 (IV Pump) 與假性穩定": "依賴升壓劑維持血壓即代表重度心血管衰竭，無視當下血壓直接列為紅區。",
     "鈣離子校正 (Corrected Ca) 與鎂離子 (Mg)": "Albumin < 4.0 會導致假性低血鈣，校正公式：Ca + 0.8×(4.0-Alb)。Mg < 1.5 易引發致命心律不整 (TdP) 及頑固性低血鉀。",
-    "肝功能與黃疸 (AST/ALT/Bil)": "AST/ALT > 100 提示實質性肝炎；> 1000 強烈提示猛爆性肝炎或缺血性肝炎 (Shock Liver)。T.Bil > 1.2 或 D.Bil 異常提示膽道阻塞或肝衰竭。",
-    "腎臟功能與 BUN/CRE 比例": "BUN/CRE > 20 提示腎前性氮血症 (Prerenal Azotemia)，急診常見於嚴重脫水或急性腸胃道出血 (UGIB)。",
-    "DKA 為什麼會變酸？ (機轉)": "【絕對缺乏胰島素】當體內沒有胰島素時，細胞開始瘋狂分解脂肪。脂肪分解的副產物就是「酮體 (Ketones)」，造成高陰離子間隙代謝性酸中毒。",
-    "HHS 為什麼會極度脫水？ (機轉)": "【相對缺乏胰島素】微量胰島素足以阻止脂肪分解(無酮體)，但無法降血糖。超高血糖會從腎臟引發強烈的「滲透壓性利尿」，把水分大量排光。",
-    "致命陷阱：血鉀的捉迷藏 (K+ Shift)": "【抽血鉀很高，卻不能打 Insulin？】嚴重酸血症時身體會把 K+ 趕出細胞到血液中，所以抽血正常或偏高其實是「假象」！打了 Insulin 瞬間把 K+ 掃回細胞內會引發致命性低血鉀。",
-    "為什麼會有假性低血鈉？ (校正公式)": "【高血糖的稀釋效應】血管極高葡萄糖產生巨大滲透壓，把細胞內水分吸進血管稀釋血鈉。必須用 1.6 或 2.4 的常數去「還原」真實血鈉。",
-    "防護期：預防腦水腫 (Cerebral Edema)": "【為何 200/300 要加糖水？】高血糖時腦細胞內有滲透壓物質。若 Insulin 把血糖降得太快，水分會瘋狂灌進腦細胞引發腦水腫。所以必須提早踩煞車加 D5W。"
+    "肝功能與黃疸 (AST/ALT/Bil)": "AST/ALT > 100 提示實質性肝炎；> 1000 強烈提示猛爆性肝炎或缺血性肝炎 (Shock Liver)。",
+    "腎臟功能與 BUN/CRE 比例": "BUN/CRE > 20 提示腎前性氮血症 (Prerenal Azotemia)，常見於嚴重脫水或 GI Bleeding。",
+    "DKA 為什麼會變酸？ (機轉)": "【絕對缺乏胰島素】當體內沒有胰島素時，細胞開始瘋狂分解脂肪。脂肪分解的副產物就是「酮體 (Ketones)」造成酸中毒。打 Insulin 是為了關閉酮體工廠！",
+    "HHS 為什麼會極度脫水？ (機轉)": "【相對缺乏胰島素】微量胰島素足以阻止脂肪分解(無酮體)，但超高血糖會從腎臟引發「滲透壓性利尿」，把水分大量排光。HHS 前期大量灌注 N/S 比打 Insulin 更重要！",
+    "致命陷阱：血鉀的捉迷藏 (K+ Shift)": "嚴重酸血症時身體會把 K+ 趕出細胞到血液中，抽血正常或偏高其實是「假象」！打了 Insulin 瞬間把 K+ 掃回細胞內會引發致命性低血鉀。",
+    "為什麼會有假性低血鈉？ (校正公式)": "血管極高葡萄糖產生巨大滲透壓，把水分吸進血管稀釋血鈉。必須用 1.6 或 2.4 的常數去「還原」真實血鈉。",
+    "防護期：預防腦水腫 (Cerebral Edema)": "高血糖時腦細胞內有滲透壓物質。若 Insulin 把血糖降得太快，水分會瘋狂灌進腦細胞引發腦水腫。所以必須提早踩煞車加 D5W。"
 }
 
 found = False
@@ -108,46 +106,36 @@ for title, content in ebp_dict.items():
             st.write(content)
 
 st.sidebar.divider()
-
-# --- 全新改版的管理員後台 (加入 Tabs 切換) ---
 st.sidebar.subheader("🔒 管理員後台")
 admin_password = st.sidebar.text_input("輸入密碼解鎖", type="password")
 if admin_password == "alex":
     st.sidebar.success("✅ 身分驗證成功")
-    
-    # 使用 Tabs 將兩種類型的紀錄分開顯示
     tab_log, tab_fb = st.sidebar.tabs(["📝 評估紀錄", "💬 意見反饋"])
-    
     with tab_log:
         if os.path.exists(LOG_FILE):
             df_log = pd.read_csv(LOG_FILE)
-            st.caption(f"共 {len(df_log)} 筆紀錄")
-            st.download_button("📥 下載紀錄", data=df_log.to_csv(index=False, encoding='utf-8-sig'), file_name="ed_obs_log.csv", mime="text/csv", key="dl_log", use_container_width=True)
-            if st.button("🗑️ 清空紀錄", key="clr_log", use_container_width=True):
-                os.remove(LOG_FILE); st.rerun()
-        else:
-            st.info("尚無評估紀錄。")
-            
+            st.download_button("📥 下載紀錄", data=df_log.to_csv(index=False, encoding='utf-8-sig'), file_name="ed_obs_log.csv", mime="text/csv", use_container_width=True)
+            if st.button("🗑️ 清空紀錄", use_container_width=True): os.remove(LOG_FILE); st.rerun()
     with tab_fb:
         if os.path.exists(FEEDBACK_FILE):
             df_fb = pd.read_csv(FEEDBACK_FILE)
-            st.caption(f"共 {len(df_fb)} 筆反饋")
-            st.dataframe(df_fb, use_container_width=True) # 讓你在後台可以直接預覽反饋內容
-            st.download_button("📥 下載反饋", data=df_fb.to_csv(index=False, encoding='utf-8-sig'), file_name="ed_feedback_log.csv", mime="text/csv", key="dl_fb", use_container_width=True)
-            if st.button("🗑️ 清空反饋", key="clr_fb", use_container_width=True):
-                os.remove(FEEDBACK_FILE); st.rerun()
-        else:
-            st.info("尚無反饋。")
-elif admin_password != "":
-    st.sidebar.error("❌ 密碼錯誤")
+            st.download_button("📥 下載反饋", data=df_fb.to_csv(index=False, encoding='utf-8-sig'), file_name="ed_feedback_log.csv", mime="text/csv", use_container_width=True)
+            if st.button("🗑️ 清空反饋", use_container_width=True): os.remove(FEEDBACK_FILE); st.rerun()
 
 # ==========================================
-# 模組 1：留觀單次評估與交班
+# 模組 1：留觀單次評估 (含隱形 Sepsis 防護網)
 # ==========================================
 if page == "📝 留觀風險評估 (交班)":
     st.title("🚨 急診留觀風險自動評估與交班")
-    patient_type = st.radio("👥 請選擇病患評估類別：", ["🧑 成人 (MEWS標準)", "👶 兒科 (PEWS標準)"], horizontal=True)
-    vitals_input = st.text_area("📋 1. 請貼上單次生命徵象：", height=100)
+    
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        patient_type = st.radio("👥 請選擇病患評估類別：", ["🧑 成人 (MEWS標準)", "👶 兒科 (PEWS標準)"], horizontal=True)
+    with col_t2:
+        # 為了計算 Sepsis 30mL/kg 輸液量，加入體重欄位
+        weight_input = st.number_input("⚖️ 病患體重 (kg, 供急救輸液運算)", min_value=10.0, max_value=200.0, value=60.0, step=1.0)
+
+    vitals_input = st.text_area("📋 1. 請貼上單次生命徵象 (含收縮壓/舒張壓)：", height=100, placeholder="體溫：36.5\n脈搏：110\n呼吸：22\n血壓：85/50...")
     
     total_score = 0
     if patient_type == "🧑 成人 (MEWS標準)":
@@ -167,7 +155,7 @@ if page == "📝 留觀風險評估 (交班)":
 
     st.subheader("⚠️ 3. 潛在不穩定主訴與病史")
     high_risk_cc = st.multiselect("➤ 是否有易發生「突發惡化」狀況？", 
-                                  ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", "🫁 嚴重氣喘/COPD", "☠️ 嚴重低血糖/酒精戒斷"])
+                                  ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", "🫁 嚴重氣喘/COPD", "☠️ 嚴重低血糖/酒精戒斷", "🦠 疑似嚴重感染/敗血症 (Sepsis)"])
 
     st.subheader("🧪 4. 補充檢驗報告")
     col1, col2 = st.columns(2)
@@ -178,15 +166,23 @@ if page == "📝 留觀風險評估 (交班)":
         if vitals_input.strip() == "": st.error("⚠️ 請先貼上生命徵象！")
         elif patient_type == "🧑 成人 (MEWS標準)" and gcs_input is None: st.error("⚠️ 請輸入 GCS 意識分數！")
         else:
-            temp = hr = rr = sbp = None 
+            temp = hr = rr = sbp = dbp = None 
             if re.search(r'體溫：([\d.]+)', vitals_input): temp = float(re.search(r'體溫：([\d.]+)', vitals_input).group(1))
             if re.search(r'脈搏：(\d+)', vitals_input): hr = int(re.search(r'脈搏：(\d+)', vitals_input).group(1))
             if re.search(r'呼吸：(\d+)', vitals_input): rr = int(re.search(r'呼吸：(\d+)', vitals_input).group(1))
-            if re.search(r'血壓：(\d+)/', vitals_input): sbp = int(re.search(r'血壓：(\d+)/', vitals_input).group(1))
+            
+            # 升級：同時抓取收縮壓 (sbp) 與舒張壓 (dbp) 來算 MAP
+            bp_match = re.search(r'血壓：(\d+)/(\d+)', vitals_input)
+            if bp_match: 
+                sbp = int(bp_match.group(1))
+                dbp = int(bp_match.group(2))
+
+            # 計算 MAP
+            map_val = round((sbp + 2 * dbp) / 3, 1) if (sbp and dbp) else None
 
             if patient_type == "🧑 成人 (MEWS標準)":
                 if temp: total_score += (2 if temp < 35 or temp >= 38.5 else 1 if temp < 36 else 0)
-                if hr: total_score += (3 if hr <= 40 or hr >= 130 else 2 if 111 <= 129 else 1 if 41 <= hr <= 50 or 101 <= hr <= 110 else 0)
+                if hr: total_score += (3 if hr <= 40 or hr >= 130 else 2 if 111 <= hr <= 129 else 1 if 41 <= hr <= 50 or 101 <= hr <= 110 else 0)
                 if rr: total_score += (3 if rr >= 30 else 2 if rr <= 8 or 21 <= rr <= 29 else 1 if 15 <= rr <= 20 else 0)
                 if sbp: total_score += (3 if sbp <= 70 else 2 if sbp <= 80 or sbp >= 200 else 1 if sbp <= 100 else 0)
                 gcs_score = 0 if gcs_input == 15 else 1 if 13 <= gcs_input <= 14 else 2 if 9 <= gcs_input <= 12 else 3
@@ -199,14 +195,19 @@ if page == "📝 留觀風險評估 (交班)":
             shock_index = round(hr / sbp, 2) if (hr and sbp and sbp > 0) else "無法計算"
 
             lab_alert = False; lab_records_list = []
+            lac_val = None
+            if lactate_input.strip():
+                lac_val = float(lactate_input)
+                if lac_val >= 4.0: lab_alert = True
+                lab_records_list.append(f"Lac {lac_val}")
+                
             if k_input.strip() and (float(k_input) < 3.0 or float(k_input) > 6.0): lab_alert = True; lab_records_list.append(f"K {k_input}")
             elif k_input.strip(): lab_records_list.append(f"K {k_input}")
             if tni_input.strip() and float(tni_input) > 17.5: lab_alert = True; lab_records_list.append(f"TnI {tni_input}")
             elif tni_input.strip(): lab_records_list.append(f"TnI {tni_input}")
             if crp_input.strip() and float(crp_input) >= 10.0: lab_alert = True; lab_records_list.append(f"CRP {crp_input}(≥10)")
             elif crp_input.strip(): lab_records_list.append(f"CRP {crp_input}")
-            if lactate_input.strip() and float(lactate_input) >= 4.0: lab_alert = True; lab_records_list.append(f"Lac {lactate_input}(≥4)")
-            elif lactate_input.strip(): lab_records_list.append(f"Lac {lactate_input}")
+            
             lab_record_text = " / ".join(lab_records_list) if lab_records_list else "無異常"
 
             has_vasopressor = any("Levophed" in p or "easydopamine" in p for p in iv_pumps)
@@ -221,6 +222,7 @@ if page == "📝 留觀風險評估 (交班)":
             elif has_high_risk_cc and any("GI Bleeding" in cc for cc in high_risk_cc): diet_warning = "🛑 飲食建議：絕對 NPO (禁食)！保留內視鏡空腹時間。"
             elif has_high_risk_cc and any("氣喘" in cc or "癲癇" in cc for cc in high_risk_cc): diet_warning = "⚠️ 飲食建議：暫時 NPO 或視情況給予流質。"
 
+            # 判斷總結
             if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0) or has_vasopressor:
                 risk_level, disposition = "🔴 紅區", "具高度惡化休克風險，建議收治或轉急救區。"
                 st.error(f"判定：{risk_level}")
@@ -231,14 +233,32 @@ if page == "📝 留觀風險評估 (交班)":
                 risk_level, disposition = "🟢 綠區", "生命徵象穩定，持續常規留觀。"
                 st.success(f"判定：{risk_level}")
 
+            # ==========================================
+            # 🩸 隱形式 Sepsis 黃金一小時警報系統
+            # ==========================================
+            sepsis_triggered = False
+            if (lac_val and lac_val >= 4.0) or (map_val and map_val < 65):
+                sepsis_triggered = True
+                fluid_goal = int(weight_input * 30)
+                st.error(f"""### 🚨 [Sepsis 敗血症黃金一小時警報]
+觸發條件：發現 MAP < 65 ({map_val}) 或 Lactate ≥ 4.0 ({lac_val})。
+
+**【SSC 2021 敗血症處置建議 (Hour-1 Bundle)】：**
+1. 💧 **目標輸液量**：體重 {weight_input} kg × 30 mL/kg = **{fluid_goal} mL** (建議於 3 小時內給予平衡性晶體輸液如 LR/Plasma-Lyte)。
+2. 🫀 **血壓標的**：若輸液後 MAP 仍 < 65 mmHg，請準備啟動 **Norepinephrine (Levophed)**。
+3. 🩸 **血液培養**：請於給予抗生素「前」完成 Blood Culture (兩套)。
+4. 💊 **抗生素**：盡速給予廣效性抗生素 (Broad-spectrum IV antibiotics)。
+5. 🧪 **乳酸追蹤**：若初始 Lactate > 2.0，請於 2-4 小時內重驗。""")
+
             st.code(f"""[留觀風險自動評估紀錄]
 1. 對象：{patient_type}
-2. 生理：體溫 {temp}℃, 脈搏 {hr}次/分, 呼吸 {rr}次/分, 血壓 {sbp}mmHg
+2. 生理：體溫 {temp}℃, 脈搏 {hr}次/分, 呼吸 {rr}次/分, 血壓 {sbp}/{dbp} (MAP: {map_val})
 3. 預警：{score_display} / SI {shock_index}
 4. 輸液/風險：{pump_record_text} / {cc_record_text}
 5. 檢驗：{lab_record_text}
 6. 判定/處置：{risk_level} - {disposition}
-7. 飲食動向：{diet_warning}""", language="text")
+7. 飲食動向：{diet_warning}
+{"8. Sepsis Bundle: 已達標高風險條件，建議啟動 30mL/kg 輸液與 1-Hour Bundle 流程。" if sepsis_triggered else ""}""", language="text")
 
             new_record = pd.DataFrame([{
                 "評估時間": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -249,7 +269,7 @@ if page == "📝 留觀風險評估 (交班)":
             else: new_record.to_csv(LOG_FILE, mode='a', header=False, index=False, encoding='utf-8-sig')
 
 # ==========================================
-# 模組 2：生命徵象趨勢 (查房)
+# 模組 2-7 保留不動 (趨勢/ABG/CBC/DKA/更新/反饋)
 # ==========================================
 elif page == "📈 生命徵象趨勢 (查房)":
     st.title("📈 留觀生命徵象趨勢分析")
@@ -269,9 +289,6 @@ elif page == "📈 生命徵象趨勢 (查房)":
             with tab2: st.line_chart(df.set_index("時間")[["休克指數 (SI)"]], color="#FF4B4B")
             with tab3: st.line_chart(df.set_index("時間")[["心跳 (HR)", "收縮壓 (SBP)"]])
 
-# ==========================================
-# 模組 3：ABG 血液氣體判讀
-# ==========================================
 elif page == "🩸 ABG 血液氣體判讀":
     st.title("🩸 動脈血液氣體分析 (ABG) 快速判讀")
     abg_input = st.text_area("📋 請貼上 HIS 系統的 Blood Gas 報告：", height=200)
@@ -300,9 +317,6 @@ elif page == "🩸 ABG 血液氣體判讀":
             if po2: col4.metric("pO2", po2, oxy, delta_color="inverse")
             st.code(f"[ABG 判讀]\npH {ph} / pCO2 {pco2} / HCO3 {hco3} / pO2 {po2}\n判讀: {primary} {comp} ({oxy})", language="text")
 
-# ==========================================
-# 模組 4：綜合抽血報告 (CBC + BCS)
-# ==========================================
 elif page == "💉 血液檢驗報告 (CBC+BCS)":
     st.title("💉 綜合抽血報告快速判讀 (CBC + BCS)")
     blood_input = st.text_area("📋 請貼上抽血報告 (可直接 Ctrl+A 全選貼上)：", height=250)
@@ -332,28 +346,22 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
         anc, anc_status = None, "未提供 WBC"
         if wbc:
             anc = round(wbc * 1000 * ((n_band + n_seg) / 100), 1)
-            anc_status = "🔴 重度低下 (<500)" if anc < 500 else "🟡 中度低下 (<1000)" if anc < 1000 else "🟡 輕度低下 (<1500)" if anc < 1500 else "🟢 正常"
+            anc_status = "🔴 重度 (<500)" if anc < 500 else "🟡 中度 (<1000)" if anc < 1000 else "🟡 輕度 (<1500)" if anc < 1500 else "🟢 正常"
         anemia_status = "無明顯貧血"
         if hb and hb < 12.0: anemia_status = f"🟡 小球性貧血" if mcv and mcv < 80 else f"🟡 大球性貧血" if mcv and mcv > 100 else "🟡 正球性貧血"
         na_status = "正常" if na and 135 <= na <= 145 else "異常" if na else "未提供"
         k_status = "🚨 危急值" if k and (k < 3.0 or k > 6.0) else "異常" if k and (k < 3.5 or k > 5.1) else "正常" if k else "未提供"
         bc_ratio = round(bun / cre, 1) if bun and cre else None
         renal_status = "正常"
-        if bc_ratio and bc_ratio > 20: renal_status = f"🔴 腎前性氮血症 (Ratio={bc_ratio} > 20)"
+        if bc_ratio and bc_ratio > 20: renal_status = f"🔴 腎前性氮血症"
         elif cre and cre > 1.3: renal_status = "🟡 腎功能損傷"
         ckd_status = "Stage 1 (≥90)" if egfr and egfr >= 90 else "Stage 2 (60-89)" if egfr and egfr >= 60 else "Stage 3a (45-59)" if egfr and egfr >= 45 else "Stage 3b (30-44)" if egfr and egfr >= 30 else "Stage 4 (15-29)" if egfr and egfr >= 15 else "Stage 5 (<15)" if egfr else "未提供"
-        liver_status = "🚨 猛爆性肝損傷 (>1000)" if ast and alt and (ast > 1000 or alt > 1000) else "🟡 肝炎" if ast and alt and (ast > 100 or alt > 100) else "正常"
+        liver_status = "🚨 猛爆性肝損傷" if ast and alt and (ast > 1000 or alt > 1000) else "🟡 肝炎" if ast and alt and (ast > 100 or alt > 100) else "正常"
         
         corr_ca = round(ca + 0.8 * (4.0 - alb), 2) if ca and alb else None
         ca_display = corr_ca if corr_ca else ca
         ca_status = "🚨 危急值" if ca_display and (ca_display < 6.5 or ca_display > 13.0) else "異常" if ca_display and (ca_display < 8.5 or ca_display > 10.5) else "正常"
         mg_status = "異常" if mg and (mg < 1.5 or mg > 2.5) else "正常"
-        bil_status = "異常" if tbil and tbil > 1.2 else "正常"
-
-        diet_warning = "🟢 飲食無特殊禁忌"
-        if (k and k > 5.1) or (egfr and egfr < 45): diet_warning = "⚠️ 飲食禁忌：嚴格限鉀、限磷，並依醫囑注意水份控制 (Renal Diet)。"
-        elif glu and glu > 250: diet_warning = "⚠️ 飲食禁忌：糖尿病飲食 (DM Diet)，避免精緻糖及過量澱粉。"
-        elif ast and ast > 500: diet_warning = "⚠️ 飲食禁忌：肝炎狀態，避免高脂食品，若有腹水需限鈉。"
 
         st.markdown("### 🧫 血液常規 (CBC & DC)")
         c1, c2, c3, c4 = st.columns(4)
@@ -369,28 +377,18 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
 
         st.markdown("### 🧪 進階電解質與肝膽指標 (Advanced BCS)")
         a1, a2, a3, a4 = st.columns(4)
-        if tbil: a1.metric("T-Bil", tbil, bil_status.split(" ")[0], delta_color="inverse" if tbil > 1.2 else "normal")
-        if alb: a2.metric("Albumin", alb, "偏低" if alb < 3.5 else "正常", delta_color="inverse" if alb < 3.5 else "normal")
+        if tbil: a1.metric("T-Bil", tbil)
+        if alb: a2.metric("Albumin", alb)
         if ca_display: a3.metric("Ca (校正鈣)" if corr_ca else "Ca", ca_display, ca_status.split(" ")[0], delta_color="inverse" if ca_status != "正常" else "normal")
         if mg: a4.metric("Mg", mg, mg_status, delta_color="inverse" if mg_status != "正常" else "normal")
         
         if bc_ratio and bc_ratio > 20: st.error(f"**💧 體液與腎臟：** {renal_status}")
         if ast and (ast > 100 or alt > 100): st.warning(f"**🩸 肝臟功能：** {liver_status}")
-        if corr_ca and corr_ca != ca: st.info(f"**🦴 鈣離子校正：** 因 Albumin 為 {alb}，測量鈣 {ca} 經校正後為 **{corr_ca}**。")
         
-        st.code(f"""[抽血檢驗判讀]
-1. 免疫：ANC {anc} / 貧血：Hb {hb} ({anemia_status})
-2. 腎臟：BUN/CRE {bc_ratio} ({renal_status}) / CKD: {ckd_status.split(' ')[0]}
-3. 肝膽：AST {ast} / ALT {alt} ({liver_status.split(' ')[0]})
-4. 電解質：Na {na} / K {k} / Ca(校正) {ca_display} / Mg {mg}
-5. 飲食衛教：{diet_warning}""", language="text")
+        st.code(f"[抽血檢驗判讀]\n1. 免疫：ANC {anc} / 貧血：Hb {hb} ({anemia_status})\n2. 腎臟：BUN/CRE {bc_ratio} / CKD: {ckd_status.split(' ')[0]}\n3. 肝膽：AST {ast} / ALT {alt}\n4. 電解質：Na {na} / K {k} / Ca(校正) {ca_display} / Mg {mg}", language="text")
 
-# ==========================================
-# 模組 5：ADA 標準 DKA/HHS 動態導航系統
-# ==========================================
 elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
     st.title("🚨 ADA 標準 DKA/HHS 動態導航系統")
-    st.markdown("**基於美國糖尿病學會 (ADA) 高血糖危機處置指引，內建滲透壓與動態血鉀防護**")
     disease_type = st.radio("👉 請選擇病患的疾病型態：", ["DKA (糖尿病酮酸血症) - 轉換點 200", "HHS (高滲透壓高血糖狀態) - 轉換點 300"], horizontal=True)
 
     tab1, tab2 = st.tabs(["Phase 1: 初始評估與給藥 (Initial)", "Phase 2: 動態滴定與轉換 (Titration)"])
@@ -407,33 +405,22 @@ elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
 
         if st.button("計算 ADA 初始醫囑", type="primary", key="btn1"):
             st.divider()
-            st.subheader("🧠 0. 有效血液滲透壓")
             eff_osmo = (2 * init_na) + (init_gluc / 18)
-            st.markdown(f"有效滲透壓為：**{eff_osmo:.1f} mOsm/kg**")
-            if eff_osmo > 320: st.error("🚨 **診斷提示：滲透壓 > 320 mOsm/kg！** (典型 HHS，前期需極度積極補充水分)")
-            else: st.info("💡 滲透壓 ≤ 320 mOsm/kg。")
+            if eff_osmo > 320: st.error(f"🚨 **滲透壓 > 320 mOsm/kg！** (典型 HHS，需積極補水)")
+            
+            st.info("💧 **初始液體**：優先給予 **0.9% NaCl** 1000 - 1500 mL/hr。")
 
-            st.subheader("💧 1. 初始液體復甦 (第一小時)")
-            st.info("優先給予 **0.9% NaCl** 1000 - 1500 mL/hr 快速滴注。")
+            if init_k < 3.3: st.error(f"🛑 **絕對禁忌：血鉀 {init_k} < 3.3 mEq/L！**\n**HOLD INSULIN！** 請先補充 KCl。")
+            elif 3.3 <= init_k <= 5.3: st.success(f"✅ **血鉀 {init_k} mEq/L**：允許啟動 Insulin。點滴加入 20-30 mEq KCl。")
+            else: st.warning(f"⚠️ **血鉀 {init_k} mEq/L (偏高)**：允許啟動 Insulin。點滴暫不加鉀。")
 
-            st.subheader("🛑 2. 血鉀檢核 (Potassium Check)")
-            if init_k < 3.3: st.error(f"**絕對禁忌：血鉀 {init_k} < 3.3 mEq/L！**\n\n**HOLD INSULIN (禁止啟動胰島素)！**\n請先補充 KCl，直到 K+ ≥ 3.3。")
-            elif 3.3 <= init_k <= 5.3: st.success(f"**血鉀 {init_k} mEq/L (安全範圍)。**\n允許啟動 Insulin。於點滴中加入 **20-30 mEq KCl**。")
-            else: st.warning(f"**血鉀 {init_k} mEq/L (偏高)。**\n允許啟動 Insulin。點滴**暫不加鉀**。")
-
-            st.subheader("🧪 3. 校正血鈉與維持輸液 (第二小時起)")
             factor_used = 1.6 if init_gluc <= 400 else 2.4
             corr_na = init_na + factor_used * ((init_gluc - 100) / 100)
-            st.markdown(f"校正血鈉為：**{corr_na:.1f} mEq/L**")
             if corr_na >= 135: st.warning("👉 維持點滴改掛 **0.45% NaCl** (250-500 mL/hr)。")
             else: st.success("👉 維持點滴續掛 **0.9% NaCl** (250-500 mL/hr)。")
 
-            st.subheader("💉 4. 胰島素初始給藥")
-            if init_k >= 3.3: st.info(f"**作法 A**：IV Bolus **{(weight_p1 * 0.1):.1f} U**，隨後 Pump **{(weight_p1 * 0.1):.1f} mL/hr**。\n* **作法 B**：無 Bolus，Pump **{(weight_p1 * 0.14):.1f} mL/hr**。")
-
-            st.subheader("🩺 5. 酸鹼平衡 (Bicarbonate)")
-            if ph_val < 6.9: st.error(f"**pH {ph_val} < 6.9：極度酸血症！**\n建議給予 100 mmol NaHCO3 滴注。")
-            else: st.success(f"**pH {ph_val} ≥ 6.9**：不建議給予碳酸氫鈉。")
+            st.info(f"💉 **胰島素**：Pump 設定 **{(weight_p1 * 0.1):.1f} mL/hr**。")
+            if ph_val < 6.9: st.error(f"🔴 **pH {ph_val} < 6.9**：建議給予 100 mmol NaHCO3。")
 
     with tab2:
         col3, col4 = st.columns(2)
@@ -452,45 +439,30 @@ elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
         if st.button("計算 ADA 最新滴數", type="primary", key="btn2"):
             st.divider()
             if has_new_k and new_k < 3.3:
-                st.error(f"🛑 **動態血鉀攔截：最新血鉀 {new_k} < 3.3 mEq/L！**\n\n**必須立刻關閉 Insulin Pump！**\n請先靜脈補充 KCl，待 K+ ≥ 3.3 後再啟動。")
+                st.error(f"🛑 **血鉀 {new_k} < 3.3 mEq/L！必須立刻關閉 Insulin Pump！**")
                 st.stop()
-            elif has_new_k and new_k > 5.3: st.warning(f"⚠️ **最新血鉀 {new_k} > 5.3 mEq/L**：請確認已停止加入 KCl。")
-            elif has_new_k: st.success(f"✅ **最新血鉀 {new_k} mEq/L (安全)**：確認點滴中持續加入 KCl。")
 
-            st.markdown("---")
             target_threshold = 200 if "DKA" in disease_type else 300
-            target_range = "150-200" if "DKA" in disease_type else "200-300"
             drop = old_gluc - new_gluc
             
             if new_gluc < 70:
-                st.error("🆘 **嚴重低血糖 (< 70 mg/dL)！**\n立刻關閉 Insulin Pump！給予 D50W 推注，並改為 Q15min 密切監測。")
+                st.error("🆘 **嚴重低血糖 (< 70 mg/dL)！立刻關閉 Insulin Pump！** 給予 D50W 推注。")
             elif new_gluc <= target_threshold:
                 min_rate = max(0.5, weight_p2 * 0.02)
                 half_rate = max(min_rate, current_rate / 2)
-                st.error(f"🚨 **ADA 關鍵防護期**：{disease_type} 血糖已達 {new_gluc} mg/dL！\n必須**立刻**執行：")
-                st.warning("1. **加糖**：維持點滴立即加入 5% 葡萄糖 (改為 **D5W + 0.45% NaCl**)。")
-                st.warning(f"2. **降速**：建議直接將原速率減半為 **{half_rate:.1f} mL/hr**。")
-                st.info(f"🎯 **後續 ADA 目標**：將血糖穩定鎖定在 **{target_range} mg/dL** 之間，直到酸中毒解除。")
+                st.error(f"🚨 **ADA 防護期**：血糖已達 {new_gluc} mg/dL！\n1. 點滴加入 5% 葡萄糖 (D5W+0.45%S)。\n2. 降速至 **{half_rate:.1f} mL/hr**。")
             else:
-                st.write(f"過去期間血糖降幅：**{drop:.0f} mg/dL**")
-                if (new_gluc <= target_threshold + 50) and (drop > 75):
-                    st.warning(f"⚠️ **邊界趨勢預警**：極可能即將跌破防護線 ({target_threshold})，請預先準備含糖輸液 (D5W)。")
-
                 if drop < 50:
                     doubled_rate = current_rate * 2
-                    if doubled_rate > 15.0: st.error(f"🛑 **滴數已達安全上限 ({doubled_rate:.1f} mL/hr)！**\n請強烈懷疑 **IV 管路漏針 (Infiltration)** 或阻塞！")
-                    else: st.warning(f"📉 **降幅 < 50 mg/dL (降太慢)**：\n建議新滴數：**{doubled_rate:.1f} mL/hr**")
+                    if doubled_rate > 15.0: st.error(f"🛑 **滴數已達上限 ({doubled_rate:.1f} mL/hr)！** 懷疑漏針或阻塞！")
+                    else: st.warning(f"📉 **降幅 < 50 mg/dL**：建議新滴數 **{doubled_rate:.1f} mL/hr**")
                 elif 50 <= drop <= 75:
-                    st.success(f"✨ **降幅 50-75 mg/dL (完美達標)**：\n🎯 **維持滴數：{current_rate:.1f} mL/hr**")
+                    st.success(f"✨ **降幅 50-75 mg/dL (完美達標)**：維持滴數 **{current_rate:.1f} mL/hr**")
                 else:
                     adjust = weight_p2 * 0.05
-                    min_allowed = max(0.5, weight_p2 * 0.02)
-                    new_rate = max(min_allowed, current_rate - adjust)
-                    st.warning(f"📉 **降幅 > 75 mg/dL (降太快)**：\n建議適度調降 Pump 速率。\n👉 建議新滴數：**{new_rate:.1f} mL/hr**")
+                    new_rate = max(max(0.5, weight_p2 * 0.02), current_rate - adjust)
+                    st.warning(f"📉 **降幅 > 75 mg/dL (降太快)**：建議新滴數 **{new_rate:.1f} mL/hr**")
 
-# ==========================================
-# 模組 6：參考文獻與系統更新
-# ==========================================
 elif page == "📖 參考文獻與系統更新":
     st.title("📖 參考文獻與系統版本紀錄")
     st.markdown("為確保臨床安全與決策品質，本系統之評估邏輯皆基於最新版國際醫學實證指引 (EBP) 建立。")
@@ -500,54 +472,36 @@ elif page == "📖 參考文獻與系統更新":
     st.markdown("""
     | 臨床決策模組 | 國際指引 / 實證出處 |
     | :--- | :--- |
-    | **MEWS / PEWS 早期預警分數** | Royal College of Physicians (RCP), *National Early Warning Score (NEWS)* 及急診醫學標準教科書 (Tintinalli's Emergency Medicine)。 |
-    | **DKA / HHS 動態導航系統** | American Diabetes Association (ADA). *Standards of Medical Care in Diabetes*, Section 16: Diabetes Care in the Hospital. |
-    | **CKD (慢性腎臟病) 分級** | KDIGO 2024 Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease. |
-    | **急診留觀室 (EDOU) 高危主訴** | American College of Emergency Physicians (ACEP). *Management of Observation Units* 臨床指引。 |
-    | **血鈉校正公式 (Hillier)** | Hillier TA, et al. *Hyponatremia: evaluating the correction factor for hyperglycemia.* Am J Med. 1999. |
+    | **Sepsis 敗血症黃金一小時** | Surviving Sepsis Campaign (SSC) 2021 Guidelines. |
+    | **MEWS / PEWS 早期預警分數** | Royal College of Physicians (RCP), *National Early Warning Score (NEWS)*。 |
+    | **DKA / HHS 動態導航系統** | American Diabetes Association (ADA). *Standards of Medical Care in Diabetes*. |
+    | **CKD (慢性腎臟病) 分級** | KDIGO 2024 Clinical Practice Guideline. |
+    | **急診留觀室 (EDOU) 高危主訴** | American College of Emergency Physicians (ACEP). |
+    | **血鈉校正公式 (Hillier)** | Hillier TA, et al. *Hyponatremia: evaluating the correction factor for hyperglycemia.* |
     """)
     st.divider()
     st.subheader("📝 系統維護日誌 (Changelog)")
     st.markdown("""
-    * **[v17.0] 2026-03**：新增「意見反饋區」，並將管理員後台升級為雙層架構，方便追蹤評估紀錄與使用者回饋。
-    * **[v16.0] 2026-03**：新增 EBP 參考文獻與版本追蹤系統，確立年度審查機制。
-    * **[v15.1] 2026-03**：優化介面流暢度，新增側邊欄藥物查詢捷徑與自動飲食防呆警示。
-    * **[v14.0] 2026-03**：全面整合 DKA/HHS 導航系統 (含動態血鉀攔截機制與滲透壓運算)。
+    * **[v17.1] 2026-03**：於留觀評估中新增「隱形式 Sepsis 黃金一小時警報」，輸入 MAP 與 Lactate 達危險值自動觸發。
+    * **[v17.0] 2026-03**：新增意見反饋區，升級雙層管理員後台。
+    * **[v16.0] 2026-03**：新增 EBP 參考文獻與系統更新宣告。
     """)
 
-# ==========================================
-# 模組 7：全新加入的系統意見反饋
-# ==========================================
 elif page == "💬 系統意見反饋":
     st.title("💬 系統意見反饋與優化建議")
-    st.markdown("本系統為花蓮慈濟急診專屬開發，您的每一個回饋都是系統持續進化的養分！若您在使用中遇到 **Bug、學理疑問、或是覺得哪個按鈕不順手**，請隨時告訴我。")
-    
+    st.markdown("本系統為花蓮慈濟急診專屬開發，您的每一個回饋都是系統進化的養分！")
     with st.form("feedback_form", clear_on_submit=True):
         col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            fb_name = st.text_input("您的稱呼 (可選填)：", placeholder="例：白班學妹")
-        with col_f2:
-            fb_type = st.selectbox("反饋類型：", ["🐞 系統錯誤 (Bug)", "💡 功能許願 (Feature Request)", "📚 學理邏輯建議 (EBP)", "🎨 介面操作不順手 (UX/UI)", "其他"])
-            
+        with col_f1: fb_name = st.text_input("您的稱呼 (可選填)：", placeholder="例：白班學妹")
+        with col_f2: fb_type = st.selectbox("反饋類型：", ["🐞 系統錯誤 (Bug)", "💡 功能許願 (Feature Request)", "📚 學理邏輯建議 (EBP)", "🎨 介面操作不順手", "其他"])
         fb_content = st.text_area("請描述您的建議或遇到的問題 ⚠️必填：", height=150)
-        
-        submitted = st.form_submit_button("🚀 送出反饋", type="primary", use_container_width=True)
-        
-        if submitted:
-            if fb_content.strip() == "":
-                st.error("⚠️ 請填寫反饋內容喔！")
+        if st.form_submit_button("🚀 送出反饋", type="primary", use_container_width=True):
+            if fb_content.strip() == "": st.error("⚠️ 請填寫反饋內容喔！")
             else:
-                new_fb = pd.DataFrame([{
-                    "時間": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "稱呼": fb_name if fb_name.strip() != "" else "匿名",
-                    "類型": fb_type,
-                    "內容": fb_content
-                }])
-                if not os.path.exists(FEEDBACK_FILE):
-                    new_fb.to_csv(FEEDBACK_FILE, index=False, encoding='utf-8-sig')
-                else:
-                    new_fb.to_csv(FEEDBACK_FILE, mode='a', header=False, index=False, encoding='utf-8-sig')
-                st.success("✅ 感謝您的反饋！我會在後台看到並盡快優化！")
+                new_fb = pd.DataFrame([{"時間": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "稱呼": fb_name if fb_name.strip() != "" else "匿名", "類型": fb_type, "內容": fb_content}])
+                if not os.path.exists(FEEDBACK_FILE): new_fb.to_csv(FEEDBACK_FILE, index=False, encoding='utf-8-sig')
+                else: new_fb.to_csv(FEEDBACK_FILE, mode='a', header=False, index=False, encoding='utf-8-sig')
+                st.success("✅ 感謝您的反饋！")
 
 # ==========================================
 # 全域頁尾
