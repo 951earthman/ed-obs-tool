@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import re
-import urllib.parse  # <-- 全新加入：用來轉換網址以生成 QR Code
 from datetime import datetime
 import os
 
@@ -10,6 +9,9 @@ import os
 # ==========================================
 st.set_page_config(page_title="急診臨床決策輔助系統", page_icon="🚨", layout="wide")
 LOG_FILE = "assessment_log.csv"
+SYSTEM_VERSION = "v16.0"
+LAST_UPDATE = "2026-03"
+NEXT_REVIEW = "2027-01 (配合 ADA 最新指引發布)"
 
 # ==========================================
 # 核心解析神經中樞 (強化版防呆機制)
@@ -60,7 +62,7 @@ def parse_his_vitals(raw_text):
     return pd.DataFrame(parsed_data)
 
 # ==========================================
-# 側邊欄 (Sidebar)：導覽、衛教 QR、學理搜尋
+# 側邊欄 (Sidebar)：導覽、學理搜尋、實用連結
 # ==========================================
 st.sidebar.title("🏥 急診臨床決策輔助系統")
 page = st.sidebar.radio("請選擇功能模組：", [
@@ -68,45 +70,22 @@ page = st.sidebar.radio("請選擇功能模組：", [
     "📈 生命徵象趨勢 (查房)",
     "🩸 ABG 血液氣體判讀",
     "💉 血液檢驗報告 (CBC+BCS)",
-    "💧 DKA/HHS 動態導航 (ADA標準)"
+    "💧 DKA/HHS 動態導航 (ADA標準)",
+    "📖 參考文獻與系統更新"  # <-- 全新加入的實證醫學分頁
 ])
 
 st.sidebar.divider()
 
-# --- 全新功能：出院/留觀飲食衛教 (QR Code 生成) ---
-st.sidebar.subheader("🍽️ 家屬飲食衛教 (QR Code)")
-st.sidebar.caption("選擇主題，讓家屬直接用手機掃描帶走！")
-edu_topic = st.sidebar.selectbox("選擇衛教主題：", ["-- 請選擇 --", "🩸 糖尿病飲食 (DM)", "💧 腎臟病飲食 (CKD)", "🍷 肝臟疾病飲食", "🩸 腸胃道出血後飲食"])
-
-if edu_topic != "-- 請選擇 --":
-    qr_url = ""
-    if edu_topic == "🩸 糖尿病飲食 (DM)":
-        st.sidebar.info("1. 規律進食，避免空腹過久。\n2. 拒絕含糖飲料與精緻甜點。\n3. 多吃高纖蔬菜延緩血糖上升。")
-        qr_url = "https://www.hpa.gov.tw/Pages/EBook.aspx?nodeid=1208" # 國健署糖尿病衛教手冊
-    elif edu_topic == "💧 腎臟病飲食 (CKD)":
-        st.sidebar.info("1. 嚴格避免高鉀食物 (如香蕉、濃湯、奇異果)。\n2. 避免高磷食物 (如堅果、內臟、加工肉品)。\n3. 依醫囑限制水分與鹽分攝取。")
-        qr_url = "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=54&pid=11255" # 國健署腎臟病衛教
-    elif edu_topic == "🍷 肝臟疾病飲食":
-        st.sidebar.info("1. 絕對禁酒！\n2. 若有腹水，嚴格限制鹽分(低鈉)。\n3. 避免攝取生食(如生蠔、生魚片)防海洋弧菌感染。")
-        qr_url = "https://www.mohw.gov.tw/cp-4252-48731-1.html" # 衛福部肝病護理
-    elif edu_topic == "🩸 腸胃道出血後飲食":
-        st.sidebar.info("1. 醫師許可進食後，先喝溫冷水測試。\n2. 前三天採「溫冷流質」或「溫冷軟食」。\n3. 絕對禁止辛辣、熱湯、咖啡及酒精。")
-        qr_url = "https://www.google.com/search?q=%E8%85%B8%E8%83%83%E9%81%93%E5%87%BA%E8%A1%80+%E9%A3%B2%E9%A3%9F+%E8%A1%9B%E6%95%99" # Google 搜尋捷徑
-    
-    if qr_url:
-        # 呼叫免費 QR Code API 產生圖片，零安裝套件！
-        encoded_url = urllib.parse.quote(qr_url)
-        st.sidebar.image(f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={encoded_url}", caption=f"📱 掃描查看【{edu_topic}】詳細指南")
-
-st.sidebar.divider()
-
+# --- 實用外部連結 ---
 st.sidebar.subheader("🔗 實用快速連結")
 st.sidebar.markdown("💊 [**院內藥物查詢系統**](https://hldrug.tzuchi.com.tw/tchw/IphqryChinese/DesktopModules/WesternMedicine/Pill_Search.aspx?Hospital=HL)", unsafe_allow_html=True)
 
 st.sidebar.divider()
 
+# --- 整合後的學理依據 (EBP) 搜尋系統 ---
 st.sidebar.subheader("📚 臨床機轉小寶典 (EBP)")
-search_query = st.sidebar.text_input("🔍 搜尋 (例: 酮體, 鉀, 腦水腫, AKI)", "").strip().lower()
+st.sidebar.caption("輸入關鍵字，快速複習急診生理機轉。")
+search_query = st.sidebar.text_input("🔍 搜尋 (例: 酮體, 鉀, AKI)", "").strip().lower()
 
 ebp_dict = {
     "預警分數 (MEWS/PEWS) 與休克指數": "MEWS ≥ 5 分 或 SI ≥ 1.0 代表高度休克與惡化風險，列為紅區。PEWS 整合兒童行為、膚色與呼吸費力程度提供早期預警。",
@@ -114,12 +93,13 @@ ebp_dict = {
     "鈣離子校正 (Corrected Ca) 與鎂離子 (Mg)": "Albumin < 4.0 會導致假性低血鈣，校正公式：Ca + 0.8×(4.0-Alb)。Mg < 1.5 易引發致命心律不整 (TdP) 及頑固性低血鉀。",
     "肝功能與黃疸 (AST/ALT/Bil)": "AST/ALT > 100 提示實質性肝炎；> 1000 強烈提示猛爆性肝炎或缺血性肝炎 (Shock Liver)。T.Bil > 1.2 或 D.Bil 異常提示膽道阻塞或肝衰竭。",
     "腎臟功能與 BUN/CRE 比例": "BUN/CRE > 20 提示腎前性氮血症 (Prerenal Azotemia)，急診常見於嚴重脫水或急性腸胃道出血 (UGIB)。",
-    "DKA 為什麼會變酸？ (機轉)": "【絕對缺乏胰島素】當體內沒有胰島素時，細胞開始瘋狂分解脂肪。脂肪分解的副產物就是「酮體 (Ketones)」，造成高陰離子間隙代謝性酸中毒。打 Insulin 是為了關閉酮體製造工廠！",
-    "HHS 為什麼會極度脫水？ (機轉)": "【相對缺乏胰島素】微量胰島素足以阻止脂肪分解(無酮體)，但無法降血糖。超高血糖會從腎臟引發強烈的「滲透壓性利尿」，把水分大量排光。HHS 前期大量灌注 N/S 比打 Insulin 更重要！",
-    "致命陷阱：血鉀的捉迷藏 (K+ Shift)": "【抽血鉀很高，卻不能打 Insulin？】嚴重酸血症時身體會把 K+ 趕出細胞到血液中，所以抽血正常或偏高其實是「假象」！打了 Insulin 瞬間把 K+ 掃回細胞內，若原本血鉀就不高 (< 3.3) 會引發致命性心律不整。",
-    "為什麼會有假性低血鈉？ (校正公式)": "【高血糖的稀釋效應】血管極高葡萄糖產生巨大滲透壓，把細胞內水分吸進血管稀釋血鈉。必須用 1.6 或 2.4 的常數去「還原」真實血鈉，決定要給 0.45% 還是 0.9% 點滴。",
-    "防護期：預防腦水腫 (Cerebral Edema)": "【為何 200/300 要加糖水？】高血糖時腦細胞內有滲透壓物質。若 Insulin 把血糖降得太快，血管滲透壓暴跌，水分會瘋狂灌進腦細胞引發腦水腫。所以必須提早踩煞車加 D5W。"
+    "DKA 為什麼會變酸？ (機轉)": "【絕對缺乏胰島素】當體內沒有胰島素時，細胞開始瘋狂分解脂肪。脂肪分解的副產物就是「酮體 (Ketones)」，造成高陰離子間隙代謝性酸中毒。",
+    "HHS 為什麼會極度脫水？ (機轉)": "【相對缺乏胰島素】微量胰島素足以阻止脂肪分解(無酮體)，但無法降血糖。超高血糖會從腎臟引發強烈的「滲透壓性利尿」，把水分大量排光。",
+    "致命陷阱：血鉀的捉迷藏 (K+ Shift)": "【抽血鉀很高，卻不能打 Insulin？】嚴重酸血症時身體會把 K+ 趕出細胞到血液中，所以抽血正常或偏高其實是「假象」！打了 Insulin 瞬間把 K+ 掃回細胞內會引發致命性低血鉀。",
+    "為什麼會有假性低血鈉？ (校正公式)": "【高血糖的稀釋效應】血管極高葡萄糖產生巨大滲透壓，把細胞內水分吸進血管稀釋血鈉。必須用 1.6 或 2.4 的常數去「還原」真實血鈉。",
+    "防護期：預防腦水腫 (Cerebral Edema)": "【為何 200/300 要加糖水？】高血糖時腦細胞內有滲透壓物質。若 Insulin 把血糖降得太快，水分會瘋狂灌進腦細胞引發腦水腫。所以必須提早踩煞車加 D5W。"
 }
+
 found = False
 for title, content in ebp_dict.items():
     if search_query == "" or search_query in title.lower() or search_query in content.lower():
@@ -139,7 +119,7 @@ if admin_password == "alex":
             os.remove(LOG_FILE); st.rerun()
 
 # ==========================================
-# 模組 1：留觀單次評估與交班 (含自動飲食防呆)
+# 模組 1：留觀單次評估與交班
 # ==========================================
 if page == "📝 留觀風險評估 (交班)":
     st.title("🚨 急診留觀風險自動評估與交班")
@@ -151,7 +131,7 @@ if page == "📝 留觀風險評估 (交班)":
         gcs_input = st.number_input("🧠 意識狀態 (GCS 分數) ⚠️必填", min_value=3, max_value=15, value=None, step=1)
         log_score_name = "MEWS"
     else:
-        gcs_input = 15 # 兒科預設
+        gcs_input = 15 
         age_group = st.selectbox("👶 選擇病童年齡區間：", ["0-3個月", "4-11個月", "1-4歲", "5-11歲", "12歲以上"])
         col_p1, col_p2, col_p3 = st.columns(3)
         with col_p1: pews_behavior = st.radio("行為狀態", ["正常(0分)", "焦躁/嗜睡(1分)", "對痛無反應(2分)"])
@@ -213,14 +193,10 @@ if page == "📝 留觀風險評估 (交班)":
             has_high_risk_cc = len(high_risk_cc) > 0
             cc_record_text = " / ".join(high_risk_cc) if has_high_risk_cc else "無"
 
-            # --- 全新加入：自動飲食防呆邏輯 ---
             diet_warning = "🟢 飲食建議：普通飲食 (Normal Diet) 或依醫囑。"
-            if gcs_input is not None and gcs_input <= 12:
-                diet_warning = "🛑 飲食建議：絕對 NPO (禁食)！意識不清，極易發生吸入性肺炎。"
-            elif has_high_risk_cc and any("GI Bleeding" in cc for cc in high_risk_cc):
-                diet_warning = "🛑 飲食建議：絕對 NPO (禁食)！疑似腸胃道出血，請保留內視鏡或手術空腹時間。"
-            elif has_high_risk_cc and any("氣喘" in cc or "癲癇" in cc for cc in high_risk_cc):
-                diet_warning = "⚠️ 飲食建議：暫時 NPO 或視情況給予流質，預防突發惡化嗆咳。"
+            if gcs_input is not None and gcs_input <= 12: diet_warning = "🛑 飲食建議：絕對 NPO (禁食)！意識不清預防吸入性肺炎。"
+            elif has_high_risk_cc and any("GI Bleeding" in cc for cc in high_risk_cc): diet_warning = "🛑 飲食建議：絕對 NPO (禁食)！保留內視鏡空腹時間。"
+            elif has_high_risk_cc and any("氣喘" in cc or "癲癇" in cc for cc in high_risk_cc): diet_warning = "⚠️ 飲食建議：暫時 NPO 或視情況給予流質。"
 
             if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0) or has_vasopressor:
                 risk_level, disposition = "🔴 紅區", "具高度惡化休克風險，建議收治或轉急救區。"
@@ -302,7 +278,7 @@ elif page == "🩸 ABG 血液氣體判讀":
             st.code(f"[ABG 判讀]\npH {ph} / pCO2 {pco2} / HCO3 {hco3} / pO2 {po2}\n判讀: {primary} {comp} ({oxy})", language="text")
 
 # ==========================================
-# 模組 4：綜合抽血報告 (含自動飲食防呆)
+# 模組 4：綜合抽血報告 (CBC + BCS)
 # ==========================================
 elif page == "💉 血液檢驗報告 (CBC+BCS)":
     st.title("💉 綜合抽血報告快速判讀 (CBC + BCS)")
@@ -351,14 +327,10 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
         mg_status = "異常" if mg and (mg < 1.5 or mg > 2.5) else "正常"
         bil_status = "異常" if tbil and tbil > 1.2 else "正常"
 
-        # --- 全新加入：依據抽血報告的自動飲食防呆 ---
         diet_warning = "🟢 飲食無特殊禁忌"
-        if (k and k > 5.1) or (egfr and egfr < 45):
-            diet_warning = "⚠️ 飲食禁忌：嚴格限鉀、限磷，並依醫囑注意水份控制 (Renal Diet)。"
-        elif glu and glu > 250:
-            diet_warning = "⚠️ 飲食禁忌：糖尿病飲食 (DM Diet)，避免精緻糖及過量澱粉。"
-        elif ast and ast > 500:
-            diet_warning = "⚠️ 飲食禁忌：肝炎狀態，避免高脂、加工食品，若有腹水需嚴格限鈉。"
+        if (k and k > 5.1) or (egfr and egfr < 45): diet_warning = "⚠️ 飲食禁忌：嚴格限鉀、限磷，並依醫囑注意水份控制 (Renal Diet)。"
+        elif glu and glu > 250: diet_warning = "⚠️ 飲食禁忌：糖尿病飲食 (DM Diet)，避免精緻糖及過量澱粉。"
+        elif ast and ast > 500: diet_warning = "⚠️ 飲食禁忌：肝炎狀態，避免高脂食品，若有腹水需限鈉。"
 
         st.markdown("### 🧫 血液常規 (CBC & DC)")
         c1, c2, c3, c4 = st.columns(4)
@@ -386,7 +358,8 @@ elif page == "💉 血液檢驗報告 (CBC+BCS)":
         st.code(f"""[抽血檢驗判讀]
 1. 免疫：ANC {anc} / 貧血：Hb {hb} ({anemia_status})
 2. 腎臟：BUN/CRE {bc_ratio} ({renal_status}) / CKD: {ckd_status.split(' ')[0]}
-3. 肝膽：AST {ast} / ALT {alt} ({liver_status.split(' ')[0]})\n4. 電解質：Na {na} / K {k} / Ca(校正) {ca_display} / Mg {mg}
+3. 肝膽：AST {ast} / ALT {alt} ({liver_status.split(' ')[0]})
+4. 電解質：Na {na} / K {k} / Ca(校正) {ca_display} / Mg {mg}
 5. 飲食衛教：{diet_warning}""", language="text")
 
 # ==========================================
@@ -491,6 +464,43 @@ elif page == "💧 DKA/HHS 動態導航 (ADA標準)":
                     min_allowed = max(0.5, weight_p2 * 0.02)
                     new_rate = max(min_allowed, current_rate - adjust)
                     st.warning(f"📉 **降幅 > 75 mg/dL (降太快)**：\n建議適度調降 Pump 速率。\n👉 建議新滴數：**{new_rate:.1f} mL/hr**")
+
+# ==========================================
+# 模組 6：參考文獻與系統更新 (全新加入)
+# ==========================================
+elif page == "📖 參考文獻與系統更新":
+    st.title("📖 參考文獻與系統版本紀錄")
+    st.markdown("為確保臨床安全與決策品質，本系統之評估邏輯皆基於最新版國際醫學實證指引 (EBP) 建立。")
+    
+    st.info(f"🔄 **當前系統版本**：{SYSTEM_VERSION} (最後更新：{LAST_UPDATE})\n\n📅 **預計下次全系統學理審查**：{NEXT_REVIEW}")
+    
+    st.divider()
+    
+    st.subheader("📚 核心評估邏輯文獻來源")
+    
+    # 使用 Markdown 表格呈現文獻，乾淨俐落
+    st.markdown("""
+    | 臨床決策模組 | 國際指引 / 實證出處 |
+    | :--- | :--- |
+    | **MEWS / PEWS 早期預警分數** | Royal College of Physicians (RCP), *National Early Warning Score (NEWS)* 及急診醫學標準教科書 (Tintinalli's Emergency Medicine)。 |
+    | **DKA / HHS 動態導航系統** | American Diabetes Association (ADA). *Standards of Medical Care in Diabetes - 2026*, Section 16: Diabetes Care in the Hospital. |
+    | **CKD (慢性腎臟病) 分級** | KDIGO 2024 Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease. |
+    | **急診留觀室 (EDOU) 高危主訴** | American College of Emergency Physicians (ACEP). *Management of Observation Units* 臨床指引。 |
+    | **敗血症與 Lactate 警示** | Surviving Sepsis Campaign: International Guidelines for Management of Sepsis and Septic Shock (SSC). |
+    | **血鈉校正公式 (Hillier)** | Hillier TA, et al. *Hyponatremia: evaluating the correction factor for hyperglycemia.* Am J Med. 1999. |
+    | **鈣離子白蛋白校正** | 依據標準內科學 (Harrison's Principles of Internal Medicine) 之低血鈣校正公式。 |
+    """)
+
+    st.divider()
+    
+    st.subheader("📝 系統維護日誌 (Changelog)")
+    st.markdown("""
+    * **[v16.0] 2026-03**：新增 EBP 參考文獻與版本追蹤系統，確立年度審查機制。
+    * **[v15.1] 2026-03**：優化介面流暢度，移除第三方 API 依賴，確保院內封閉網路環境下百分之百穩定運作。新增側邊欄藥物查詢捷徑。
+    * **[v14.0] 2026-03**：全面整合 DKA/HHS 導航系統 (含動態血鉀攔截機制與滲透壓運算)。
+    * **[v13.0] 2026-03**：加入進階生化與肝膽模組 (T.Bil, Albumin, 鈣離子校正, Mg)。
+    * **[v12.0] 2026-03**：完成 HIS 系統多筆生命徵象趨勢批次匯入與圖表化功能。
+    """)
 
 # ==========================================
 # 全域頁尾
