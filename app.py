@@ -511,7 +511,7 @@ st.divider()
 st.markdown("""
 <div style="text-align: center; color: gray; font-size: 0.85em;">
     <p><strong>© 2026 急診臨床決策輔助系統 (ER Clinical Decision Support)</strong></p>
-    <p>💡 <b>System Design & Clinical Logic by：</b>花蓮慈濟醫學中心 急診護理師 [你的名字] (D-MAT / BLS Instructor)</p>
+    <p>💡 <b>System Design & Clinical Logic by：</b>花蓮慈濟醫學中心 急診護理師 [吳智弘] (D-MAT / BLS Instructor)</p>
     <p>⚠️ <b>免責聲明：</b>本系統基於臨床實證醫學 (EBP) 與 AI 開發，僅供輔助參考，絕對不可替代臨床醫師之最終專業診斷。</p>
 </div>
 """, unsafe_allow_html=True)
