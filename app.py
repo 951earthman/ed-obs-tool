@@ -8,12 +8,39 @@ import os
 # 系統設定與全域變數
 # ==========================================
 st.set_page_config(page_title="急診臨床決策輔助系統", page_icon="🚨", layout="wide")
+
+# ==========================================
+# 🔒 全域密碼防護網 (專利保護機制)
+# ==========================================
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+def check_password():
+    # 👉 這裡的 "tzuchi2026" 就是你的全域密碼，請自行修改成你想要的密碼！
+    if st.session_state["global_pwd"] == "asd55660":
+        st.session_state["authenticated"] = True
+    else:
+        st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    # 這是被擋在門外的人會看到的畫面
+    st.title("🔒 系統已上鎖 (智財保護與封測中)")
+    st.warning("⚠️ 本系統目前進入專利申請與封閉測試階段。未經授權之人員請勿登入或側錄。")
+    st.text_input("🔑 請輸入全域通行密碼解鎖系統：", type="password", key="global_pwd", on_change=check_password)
+    
+    if st.session_state.get("global_pwd") and not st.session_state["authenticated"]:
+        st.error("❌ 密碼錯誤，請重新輸入！")
+        
+    st.stop()  # 🛑 這行是靈魂！密碼沒過，後方的所有醫療邏輯與 UI 絕對不會被渲染出來！
+
+# ==========================================
+# 系統往下繼續執行 (密碼正確才會走到這裡)
+# ==========================================
 LOG_FILE = "assessment_log.csv"
 FEEDBACK_FILE = "feedback_log.csv"
 SYSTEM_VERSION = "v17.1"
 LAST_UPDATE = "2026-03"
 NEXT_REVIEW = "2027-01 (配合 ADA 最新指引發布)"
-
 # ==========================================
 # 核心解析神經中樞
 # ==========================================
