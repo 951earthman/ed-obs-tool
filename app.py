@@ -7,40 +7,14 @@ import os
 # ==========================================
 # 系統設定與全域變數
 # ==========================================
-st.set_page_config(page_title="急診臨床決策輔助系統", page_icon="🚨", layout="wide")
+st.set_page_config(page_title="急診學長在這裡", page_icon="🚨", layout="wide")
 
-# ==========================================
-# 🔒 全域密碼防護網 (專利保護機制)
-# ==========================================
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-
-def check_password():
-    # 👉 這裡的 "tzuchi2026" 就是你的全域密碼，請自行修改成你想要的密碼！
-    if st.session_state["global_pwd"] == "asd55660":
-        st.session_state["authenticated"] = True
-    else:
-        st.session_state["authenticated"] = False
-
-if not st.session_state["authenticated"]:
-    # 這是被擋在門外的人會看到的畫面
-    st.title("🔒 系統已上鎖 (智財保護與封測中)")
-    st.warning("⚠️ 本系統目前進入專利申請與封閉測試階段。未經授權之人員請勿登入或側錄。")
-    st.text_input("🔑 請輸入全域通行密碼解鎖系統：", type="password", key="global_pwd", on_change=check_password)
-    
-    if st.session_state.get("global_pwd") and not st.session_state["authenticated"]:
-        st.error("❌ 密碼錯誤，請重新輸入！")
-        
-    st.stop()  # 🛑 這行是靈魂！密碼沒過，後方的所有醫療邏輯與 UI 絕對不會被渲染出來！
-
-# ==========================================
-# 系統往下繼續執行 (密碼正確才會走到這裡)
-# ==========================================
 LOG_FILE = "assessment_log.csv"
 FEEDBACK_FILE = "feedback_log.csv"
-SYSTEM_VERSION = "v17.1"
-LAST_UPDATE = "2026-03"
-NEXT_REVIEW = "2027-01 (配合 ADA 最新指引發布)"
+SYSTEM_VERSION = "v18.0 (HIS API Ready)"
+LAST_UPDATE = "2026-05"
+NEXT_REVIEW = "2027-01"
+
 # ==========================================
 # 核心解析神經中樞
 # ==========================================
@@ -94,7 +68,7 @@ def parse_his_vitals(raw_text):
 # ==========================================
 st.sidebar.title("🏥 急診學長在這裡")
 page = st.sidebar.radio("請選擇功能模組：", [
-    "📝 留觀風險評估 (交班)", 
+    "📝 留觀風險評估 (HIS連線版)", 
     "📈 生命徵象趨勢 (查房)",
     "🩸 ABG 血液氣體判讀",
     "💉 血液檢驗報告 (CBC+BCS)",
@@ -125,10 +99,8 @@ ebp_dict = {
     "防護期：預防腦水腫 (Cerebral Edema)": "高血糖時腦細胞內有滲透壓物質。若 Insulin 把血糖降得太快，水分會瘋狂灌進腦細胞引發腦水腫。所以必須提早踩煞車加 D5W。"
 }
 
-found = False
 for title, content in ebp_dict.items():
     if search_query == "" or search_query in title.lower() or search_query in content.lower():
-        found = True
         with st.sidebar.expander(title, expanded=(search_query != "")):
             st.write(content)
 
@@ -150,23 +122,38 @@ if admin_password == "alex":
             if st.button("🗑️ 清空反饋", use_container_width=True): os.remove(FEEDBACK_FILE); st.rerun()
 
 # ==========================================
-# 模組 1：留觀單次評估 (含隱形 Sepsis 防護網)
+# 模組 1：留觀單次評估 (HIS連線版)
 # ==========================================
-if page == "📝 留觀風險評估 (交班)":
+if page == "📝 留觀風險評估 (HIS連線版)":
     st.title("🚨 急診留觀風險自動評估與交班")
+    
+    # --- 新增：向 IT 展示 API 帶入威力的區塊 ---
+    st.info("🔗 **HIS 系統 API 連線狀態：待命中** \n(未來急診醫師/護理師於 HIS 點擊「急診學長輔助」按鈕後，將經由 Encounter ID 自動拋轉以下所有數值，不需手動輸入。)")
+    
+    # 模擬 API 帶入按鈕
+    if st.button("⚡ 模擬從 HIS 系統一鍵載入最新數據 (Demo專用)", type="secondary"):
+        st.session_state['mock_api'] = True
+        st.success("✅ 已成功攔截 HIS 就醫序號！生命徵象與最新 Lab data 已自動寫入。")
+    
+    # 判斷是否使用模擬資料
+    is_mock = st.session_state.get('mock_api', False)
+    default_vitals = "體溫：38.9\n脈搏：125\n呼吸：26\n血壓：85/48" if is_mock else ""
+    default_k = "3.2" if is_mock else ""
+    default_lac = "4.5" if is_mock else ""
+    default_crp = "12.5" if is_mock else ""
+    # ----------------------------------------
     
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         patient_type = st.radio("👥 請選擇病患評估類別：", ["🧑 成人 (MEWS標準)", "👶 兒科 (PEWS標準)"], horizontal=True)
     with col_t2:
-        # 為了計算 Sepsis 30mL/kg 輸液量，加入體重欄位
-        weight_input = st.number_input("⚖️ 病患體重 (kg, 供急救輸液運算)", min_value=10.0, max_value=200.0, value=60.0, step=1.0)
+        weight_input = st.number_input("⚖️ 病患體重 (kg, 供急救輸液運算)", min_value=10.0, max_value=200.0, value=65.0 if is_mock else 60.0, step=1.0)
 
-    vitals_input = st.text_area("📋 1. 請貼上單次生命徵象 (含收縮壓/舒張壓)：", height=100, placeholder="體溫：36.5\n脈搏：110\n呼吸：22\n血壓：85/50...")
+    vitals_input = st.text_area("📋 1. 生命徵象 (未來由 API 自動帶入)：", value=default_vitals, height=100, placeholder="體溫：36.5\n脈搏：110\n呼吸：22\n血壓：85/50...")
     
     total_score = 0
     if patient_type == "🧑 成人 (MEWS標準)":
-        gcs_input = st.number_input("🧠 意識狀態 (GCS 分數) ⚠️必填", min_value=3, max_value=15, value=None, step=1)
+        gcs_input = st.number_input("🧠 意識狀態 (GCS 分數) ⚠️必填", min_value=3, max_value=15, value=14 if is_mock else None, step=1)
         log_score_name = "MEWS"
     else:
         gcs_input = 15 
@@ -178,33 +165,31 @@ if page == "📝 留觀風險評估 (交班)":
         log_score_name = "PEWS"
 
     st.subheader("💉 2. 高危險連續輸液 (IV Pump)")
-    iv_pumps = st.multiselect("➤ 病患是否使用滴注藥物？", ["Levophed", "easydopamine", "Isoket", "Perdipine", "其他降壓或強心"])
+    iv_pumps = st.multiselect("➤ 病患是否使用滴注藥物？(未來可由醫囑系統帶入)", ["Levophed", "easydopamine", "Isoket", "Perdipine", "其他降壓或強心"])
 
     st.subheader("⚠️ 3. 潛在不穩定主訴與病史")
-    high_risk_cc = st.multiselect("➤ 是否有易發生「突發惡化」狀況？", 
-                                  ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", "🫁 嚴重氣喘/COPD", "☠️ 嚴重低血糖/酒精戒斷", "🦠 疑似嚴重感染/敗血症 (Sepsis)"])
+    default_cc = ["🦠 疑似嚴重感染/敗血症 (Sepsis)"] if is_mock else []
+    high_risk_cc = st.multiselect("➤ 是否有易發生「突發惡化」狀況？(未來可由檢傷主訴帶入)", 
+                                  ["🧠 癲癇/TIA", "🫀 暈厥/胸痛", "🩸 疑似 GI Bleeding", "🫁 嚴重氣喘/COPD", "☠️ 嚴重低血糖/酒精戒斷", "🦠 疑似嚴重感染/敗血症 (Sepsis)"], default=default_cc)
 
-    st.subheader("🧪 4. 補充檢驗報告")
+    st.subheader("🧪 4. 補充檢驗報告 (未來由檢驗 LIS 系統自動帶入)")
     col1, col2 = st.columns(2)
-    with col1: k_input, crp_input = st.text_input("➤ K："), st.text_input("➤ CRP：")
-    with col2: tni_input, lactate_input = st.text_input("➤ Hs-TnI："), st.text_input("➤ Lactate：")
+    with col1: k_input = st.text_input("➤ K：", value=default_k); crp_input = st.text_input("➤ CRP：", value=default_crp)
+    with col2: tni_input = st.text_input("➤ Hs-TnI："); lactate_input = st.text_input("➤ Lactate：", value=default_lac)
 
-    if st.button("🚀 開始評估並生成紀錄", type="primary"):
-        if vitals_input.strip() == "": st.error("⚠️ 請先貼上生命徵象！")
-        elif patient_type == "🧑 成人 (MEWS標準)" and gcs_input is None: st.error("⚠️ 請輸入 GCS 意識分數！")
+    if st.button("🚀 執行綜合評估與警示", type="primary"):
+        if vitals_input.strip() == "": st.error("⚠️ 尚未接收到生命徵象數據！")
+        elif patient_type == "🧑 成人 (MEWS標準)" and gcs_input is None: st.error("⚠️ 尚未接收到 GCS 意識分數！")
         else:
             temp = hr = rr = sbp = dbp = None 
             if re.search(r'體溫：([\d.]+)', vitals_input): temp = float(re.search(r'體溫：([\d.]+)', vitals_input).group(1))
             if re.search(r'脈搏：(\d+)', vitals_input): hr = int(re.search(r'脈搏：(\d+)', vitals_input).group(1))
             if re.search(r'呼吸：(\d+)', vitals_input): rr = int(re.search(r'呼吸：(\d+)', vitals_input).group(1))
             
-            # 升級：同時抓取收縮壓 (sbp) 與舒張壓 (dbp) 來算 MAP
             bp_match = re.search(r'血壓：(\d+)/(\d+)', vitals_input)
             if bp_match: 
-                sbp = int(bp_match.group(1))
-                dbp = int(bp_match.group(2))
+                sbp = int(bp_match.group(1)); dbp = int(bp_match.group(2))
 
-            # 計算 MAP
             map_val = round((sbp + 2 * dbp) / 3, 1) if (sbp and dbp) else None
 
             if patient_type == "🧑 成人 (MEWS標準)":
@@ -250,6 +235,7 @@ if page == "📝 留觀風險評估 (交班)":
             elif has_high_risk_cc and any("氣喘" in cc or "癲癇" in cc for cc in high_risk_cc): diet_warning = "⚠️ 飲食建議：暫時 NPO 或視情況給予流質。"
 
             # 判斷總結
+            st.divider()
             if total_score >= 5 or lab_alert or (isinstance(shock_index, float) and shock_index > 1.0) or has_vasopressor:
                 risk_level, disposition = "🔴 紅區", "具高度惡化休克風險，建議收治或轉急救區。"
                 st.error(f"判定：{risk_level}")
@@ -260,9 +246,7 @@ if page == "📝 留觀風險評估 (交班)":
                 risk_level, disposition = "🟢 綠區", "生命徵象穩定，持續常規留觀。"
                 st.success(f"判定：{risk_level}")
 
-            # ==========================================
-            # 🩸 隱形式 Sepsis 黃金一小時警報系統
-            # ==========================================
+            # 🩸 Sepsis 警報系統
             sepsis_triggered = False
             if (lac_val and lac_val >= 4.0) or (map_val and map_val < 65):
                 sepsis_triggered = True
@@ -271,13 +255,13 @@ if page == "📝 留觀風險評估 (交班)":
 觸發條件：發現 MAP < 65 ({map_val}) 或 Lactate ≥ 4.0 ({lac_val})。
 
 **【SSC 2021 敗血症處置建議 (Hour-1 Bundle)】：**
-1. 💧 **目標輸液量**：體重 {weight_input} kg × 30 mL/kg = **{fluid_goal} mL** (建議於 3 小時內給予平衡性晶體輸液如 LR/Plasma-Lyte)。
+1. 💧 **目標輸液量**：體重 {weight_input} kg × 30 mL/kg = **{fluid_goal} mL** (建議於 3 小時內給予平衡性晶體輸液)。
 2. 🫀 **血壓標的**：若輸液後 MAP 仍 < 65 mmHg，請準備啟動 **Norepinephrine (Levophed)**。
 3. 🩸 **血液培養**：請於給予抗生素「前」完成 Blood Culture (兩套)。
-4. 💊 **抗生素**：盡速給予廣效性抗生素 (Broad-spectrum IV antibiotics)。
+4. 💊 **抗生素**：盡速給予廣效性抗生素。
 5. 🧪 **乳酸追蹤**：若初始 Lactate > 2.0，請於 2-4 小時內重驗。""")
 
-            st.code(f"""[留觀風險自動評估紀錄]
+            st.code(f"""[急診學長決策輔助紀錄]
 1. 對象：{patient_type}
 2. 生理：體溫 {temp}℃, 脈搏 {hr}次/分, 呼吸 {rr}次/分, 血壓 {sbp}/{dbp} (MAP: {map_val})
 3. 預警：{score_display} / SI {shock_index}
@@ -294,6 +278,8 @@ if page == "📝 留觀風險評估 (交班)":
             }])
             if not os.path.exists(LOG_FILE): new_record.to_csv(LOG_FILE, index=False, encoding='utf-8-sig')
             else: new_record.to_csv(LOG_FILE, mode='a', header=False, index=False, encoding='utf-8-sig')
+
+            if is_mock: st.session_state['mock_api'] = False # 測試完重置
 
 # ==========================================
 # 模組 2-7 保留不動 (趨勢/ABG/CBC/DKA/更新/反饋)
@@ -509,9 +495,8 @@ elif page == "📖 參考文獻與系統更新":
     st.divider()
     st.subheader("📝 系統維護日誌 (Changelog)")
     st.markdown("""
+    * **[v18.0] 2026-05**：移除外部封測密碼，正式定名「急診學長在這裡」，並加入 HIS API Context Passing (情境傳遞) 模擬介面，為院內資訊室自動化介接做準備。
     * **[v17.1] 2026-03**：於留觀評估中新增「隱形式 Sepsis 黃金一小時警報」，輸入 MAP 與 Lactate 達危險值自動觸發。
-    * **[v17.0] 2026-03**：新增意見反饋區，升級雙層管理員後台。
-    * **[v16.0] 2026-03**：新增 EBP 參考文獻與系統更新宣告。
     """)
 
 elif page == "💬 系統意見反饋":
@@ -531,7 +516,7 @@ elif page == "💬 系統意見反饋":
                 st.success("✅ 感謝您的反饋！")
 
 # ==========================================
-# 全域頁尾
+# 全域頁尾 (保留智財保護聲明)
 # ==========================================
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.divider()
